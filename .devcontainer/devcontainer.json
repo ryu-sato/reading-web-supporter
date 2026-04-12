@@ -3,20 +3,38 @@
 {
 	"name": "Node.js & TypeScript",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/typescript-node:4-24-trixie"
+	"image": "mcr.microsoft.com/devcontainers/typescript-node:4-24-trixie",
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
+	"features": {
+		"ghcr.io/roul/devcontainer-features/mise-python:1": {
+			"version": "3.12"
+		},
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+	},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "yarn install",
+	"postCreateCommand": "bash -l .devcontainer/postCreateCommand.sh",
 
 	// Configure tool-specific properties.
-	// "customizations": {},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"mhutchie.git-graph",
+				"anthropic.claude-code"
+			]
+		}
+	},
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
+
+	"containerEnv": {
+		// IPv6 による接続の問題を回避するため、Node.js の DNS 結果の順序を IPv4 優先にする
+		// 参考: https://github.com/anthropics/claude-code/issues/9376#issuecomment-3773860151
+		"NODE_OPTIONS": "--dns-result-order=ipv4first"
+	}
 }
