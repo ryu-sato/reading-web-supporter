@@ -16,7 +16,7 @@
   - 拡張機能がChromeデベロッパーモードでマニフェストエラーなしで読み込まれる
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 1.3 (P) 共有TypeScript型とユーティリティを定義
+- [x] 1.3 (P) 共有TypeScript型とユーティリティを定義
   - SupabaseCredentials、SaveTextOptions、SaveResultインターフェースを含むtypes/types.tsを作成
   - content scriptとservice worker間で一貫したログ記録のためのutils/logger.tsを作成
   - 標準化されたユーザーフィードバック表示ロジックのためのutils/error-handler.tsを作成
