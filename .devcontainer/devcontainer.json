@@ -21,7 +21,8 @@
 		"vscode": {
 			"extensions": [
 				"mhutchie.git-graph",
-				"anthropic.claude-code"
+				"anthropic.claude-code",
+				"mermaidchart.vscode-mermaid-chart"
 			]
 		}
 	},
