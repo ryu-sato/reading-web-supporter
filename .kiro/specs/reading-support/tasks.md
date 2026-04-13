@@ -9,7 +9,7 @@
   - TypeScriptコンパイレーション用のChrome拡張機能開発環境が準備完了
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 1.2 Chrome拡張機能マニフェストとディレクトリ構造を作成
+- [x] 1.2 Chrome拡張機能マニフェストとディレクトリ構造を作成
   - content_scripts、service_worker、options_page宣言を含むmanifest.json v3を生成
   - src/ディレクトリ構造を作成：content/、service-worker/、options/、types/、utils/
   - 拡張機能アイコン（16px、48px、128px）と静的アセットを含むpublic/ディレクトリをセットアップ
