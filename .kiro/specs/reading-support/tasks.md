@@ -2,7 +2,7 @@
 
 ## 1. 基盤
 
-- [ ] 1.1 プロジェクト構造とビルド設定のセットアップ
+- [x] 1.1 プロジェクト構造とビルド設定のセットアップ
   - TypeScript、webpack、@supabase/supabase-js依存関係を含むpackage.jsonを作成
   - Chrome拡張機能タイプ（@types/chrome）を含むES2020+用のtsconfig.jsonを設定
   - content scriptとservice worker用の分離されたエントリポイントのwebpack設定をセットアップ

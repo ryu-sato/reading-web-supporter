@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>読書サポート - 設定</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>読書サポート 設定</h1>
+    <p class="description">
+      Supabaseプロジェクトの接続情報を設定してください。<br>
+      設定後、Webページでテキストを選択して右クリックから「Save to Supabase」を実行できます。
+    </p>
+
+    <form id="settings-form">
+      <div class="form-group">
+        <label for="project-url">Supabase プロジェクト URL</label>
+        <input
+          type="url"
+          id="project-url"
+          name="project-url"
+          placeholder="https://xxxxxxxxxxxxxxxxxx.supabase.co"
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="anon-key">Anon Key（公開APIキー）</label>
+        <input
+          type="password"
+          id="anon-key"
+          name="anon-key"
+          placeholder="eyJ..."
+          required
+        >
+      </div>
+
+      <div class="button-group">
+        <button type="button" id="test-btn" class="btn btn-secondary">
+          接続テスト
+        </button>
+        <button type="button" id="save-btn" class="btn btn-primary">
+          保存
+        </button>
+      </div>
+    </form>
+
+    <div id="status" class="status" aria-live="polite"></div>
+  </div>
+</body>
+</html>
