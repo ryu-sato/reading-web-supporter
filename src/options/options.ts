@@ -3,9 +3,13 @@
  * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
  *
  * Supabase認証情報の入力・保存・疎通確認を行う設定画面のロジック。
+ * SettingsManager に委譲して認証情報の管理を一元化する。
  */
 
+import { SettingsManager } from '../service-worker/settings-manager';
 import type { SupabaseCredentials } from '../types/types';
+
+const settingsManager = new SettingsManager();
 
 /**
  * フォームから認証情報を取得する
@@ -32,8 +36,7 @@ function showStatus(message: string, isError = false): void {
  * Requirement 3.3: ブラウザを再起動しても設定が維持される
  */
 async function loadExistingCredentials(): Promise<void> {
-  const result = await chrome.storage.local.get('supabase_credentials');
-  const creds = result['supabase_credentials'] as SupabaseCredentials | null;
+  const creds = await settingsManager.getCredentials();
 
   if (creds) {
     const urlInput = document.getElementById('project-url') as HTMLInputElement | null;
@@ -56,8 +59,13 @@ async function saveCredentials(): Promise<void> {
     return;
   }
 
-  // SettingsManagerへの委譲はタスク1.5で実装
-  await chrome.storage.local.set({ supabase_credentials: creds });
+  const result = await settingsManager.setCredentials(creds);
+
+  if (!result.success) {
+    showStatus(result.error ?? '設定の保存に失敗しました', true);
+    return;
+  }
+
   showStatus('設定を保存しました');
 }
 
@@ -67,8 +75,15 @@ async function saveCredentials(): Promise<void> {
  */
 async function testConnection(): Promise<void> {
   showStatus('接続テスト中...');
-  // SupabaseWriterへの委譲はタスク1.4で実装
-  showStatus('接続テスト機能は準備中です', true);
+
+  const result = await settingsManager.testConnection();
+
+  if (!result.success) {
+    showStatus(result.message, true);
+    return;
+  }
+
+  showStatus(result.message);
 }
 
 // DOM初期化

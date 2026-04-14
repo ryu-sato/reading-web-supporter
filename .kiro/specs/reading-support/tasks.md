@@ -80,7 +80,7 @@
   - _Requirements: 1.1, 1.2, 1.4, 2.1_
   - _Boundary: Service Workerドメイン - メッセージルーティング_
 
-- [ ] 2.6 (P) 設定構成用のオプションページUIを構築
+- [x] 2.6 (P) 設定構成用のオプションページUIを構築
   - Supabase Project URLとAnon Key入力のフォームフィールドを含むoptions.htmlを作成
   - フォーム処理、検証、SettingsManager統合を含むoptions.tsを実装
   - ステータスdivでのリアルタイムの成功/エラー表示を含む「Test Connection」と「Save」ボタンを追加
