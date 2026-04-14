@@ -42,7 +42,7 @@
   - _Requirements: 1.1, 1.4_
   - _Boundary: Content Scriptドメイン_
 
-- [ ] 2.2 (P) 認証情報ストレージ用の設定マネージャーを実装
+- [x] 2.2 (P) 認証情報ストレージ用の設定マネージャーを実装
   - SupabaseCredentialsインターフェースを使用するChrome storage操作用のSettingsManagerクラスを作成
   - HTTPS URL形式とAPIキー形式（40文字以上）の認証情報検証を追加
   - getCredentials()、setCredentials()、isConfigured()、testConnection()メソッドを実装
