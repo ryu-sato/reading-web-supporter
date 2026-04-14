@@ -1,83 +1,59 @@
 /**
  * Service Worker エントリポイント
- * Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3
+ * タスク 3.1: service workerバックグラウンドオーケストレーションを配線
+ *
+ * Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2
  *
  * Chrome拡張機能のメインバックグラウンドプロセス。
- * Context Menu、Supabase通信、設定管理を統合します。
+ * ContextMenuHandler、MessageHandler、SettingsManager、SupabaseWriter を
+ * 一元的に初期化・調整します。
+ *
+ * Manifest V3 のライフサイクル:
+ * - モジュールレベルの初期化: service worker がアクティベートされるたびに実行
+ * - onInstalled: 拡張機能のインストール/更新時に発火
+ * - onStartup: ブラウザ起動時に発火
  */
 
-import type { ExtensionMessage, TextSelectionMessage } from '../types/types';
+import { ContextMenuHandler } from './context-menu-handler';
+import { MessageHandler } from './message-handler';
+import { SettingsManager } from './settings-manager';
+import { SupabaseWriter } from './supabase-writer';
 
-/** 現在の選択状態をメモリに保持 */
-let currentSelection: TextSelectionMessage['payload'] = {
-  selectedText: '',
-  pageUrl: '',
-  hasSelection: false,
-};
+// ── コンポーネント初期化（モジュールレベル） ──────────────────────────────────────
+// Manifest V3 では service worker がイベントごとにアクティベートされるため、
+// モジュールレベルで初期化することで各アクティベーション時に確実に初期化される
+
+/** MessageHandler: Content Script ↔ Service Worker 間のメッセージルーティング */
+const messageHandler = new MessageHandler();
+
+/** SettingsManager: Supabase 認証情報の永続化管理 */
+const settingsManager = new SettingsManager();
+
+/** SupabaseWriter: Supabase への INSERT 操作 */
+const supabaseWriter = new SupabaseWriter();
+
+/** ContextMenuHandler: Chrome コンテキストメニュー統合 */
+const contextMenuHandler = new ContextMenuHandler();
+
+// ── Manifest V3 ライフサイクルイベント ────────────────────────────────────────────
 
 /**
- * Context Menuの初期化
- * Requirement 1.1: コンテキストメニューに保存オプション表示
+ * 拡張機能インストール/更新時のハンドラー
+ * Requirement 1.1: コンテキストメニューの登録
  */
-function initContextMenu(): void {
-  chrome.contextMenus.create({
-    id: 'save-to-supabase',
-    title: 'Save to Supabase',
-    contexts: ['selection'],
-    documentUrlPatterns: ['<all_urls>'],
-  });
-}
-
-/**
- * メッセージハンドラー
- */
-function handleMessage(
-  message: ExtensionMessage,
-  _sender: chrome.runtime.MessageSender,
-  _sendResponse: (response?: unknown) => void
-): boolean {
-  if (message.type === 'textSelectionUpdated') {
-    currentSelection = message.payload;
-    // テキスト未選択時はコンテキストメニューを非表示
-    // Manifest V3ではenabled/disabledの動的変更が可能
-  }
-  return false;
-}
-
-/**
- * Context Menuクリックハンドラー
- * Requirement 1.2: 保存操作実行時、URL + テキストをSupabase送信
- * Requirement 1.4: テキスト未選択時に保存操作を無効化またはエラーメッセージを表示
- */
-async function handleContextMenuClick(
-  info: chrome.contextMenus.OnClickData,
-  _tab?: chrome.tabs.Tab
-): Promise<void> {
-  if (info.menuItemId !== 'save-to-supabase') return;
-
-  const selectionText = info.selectionText ?? currentSelection.selectedText;
-  const pageUrl = _tab?.url ?? currentSelection.pageUrl;
-
-  if (!selectionText || selectionText.trim().length === 0) {
-    // Requirement 1.4: テキスト未選択時のエラー処理
-    console.warn('[ReadingSupporter] テキストが選択されていません');
-    return;
-  }
-
-  // SupabaseWriterへの委譲はタスク1.4で実装
-  console.info('[ReadingSupporter] 保存開始:', { selectionText, pageUrl });
-}
-
-// Service Worker初期化
 chrome.runtime.onInstalled.addListener(() => {
-  initContextMenu();
+  contextMenuHandler.register();
 });
 
+/**
+ * ブラウザ起動時のハンドラー
+ * Requirement 1.1: ブラウザ再起動後もコンテキストメニューを再登録
+ */
 chrome.runtime.onStartup.addListener(() => {
-  initContextMenu();
+  contextMenuHandler.register();
 });
 
-chrome.contextMenus.onClicked.addListener(handleContextMenuClick);
-chrome.runtime.onMessage.addListener(handleMessage);
-
-export { handleContextMenuClick, handleMessage, initContextMenu };
+// タスク 3.2 および 3.3 でコンポーネント間の配線が完成するまで、
+// 各インスタンスはコンストラクタ内のイベントリスナー登録の副作用のためにのみ初期化される。
+// export によりコンポーネントは将来の配線で参照可能になる。
+export { contextMenuHandler, messageHandler, settingsManager, supabaseWriter };

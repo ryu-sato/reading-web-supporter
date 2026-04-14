@@ -91,7 +91,7 @@
 
 ## 3. 統合
 
-- [ ] 3.1 service workerバックグラウンドオーケストレーションを配線
+- [x] 3.1 service workerバックグラウンドオーケストレーションを配線
   - 適切なManifest V3ライフサイクルを含むservice workerエントリポイントとしてbackground.tsを作成
   - 拡張機能起動時にContextMenuHandler、MessageHandler、SettingsManager、SupabaseWriterを初期化
   - service workerアクティベーションイベント中にコンテキストメニュー登録をセットアップ
