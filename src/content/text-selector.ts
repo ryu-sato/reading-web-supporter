@@ -7,6 +7,23 @@
 
 import type { TextSelectionMessage } from '../types/types';
 
+/** Chrome Extension Runtime API の型定義（テスト環境でのグローバルモックに対応） */
+interface ChromeRuntime {
+  sendMessage(message: unknown): Promise<unknown>;
+}
+
+interface ChromeGlobal {
+  runtime: ChromeRuntime;
+}
+
+/**
+ * テスト環境と本番環境の両方で chrome グローバルにアクセスする
+ */
+function getChromeRuntime(): ChromeRuntime | null {
+  const g = globalThis as unknown as { chrome?: ChromeGlobal };
+  return g.chrome?.runtime ?? null;
+}
+
 /**
  * テキスト選択の状態を取得する
  */
@@ -41,15 +58,29 @@ function notifySelectionChange(): void {
     payload: state,
   };
 
-  chrome.runtime.sendMessage(message).catch(() => {
-    // Service Workerが未起動の場合は無視する
-  });
+  const runtime = getChromeRuntime();
+  if (runtime) {
+    runtime.sendMessage(message).catch(() => {
+      // Service Workerが未起動の場合は無視する
+    });
+  }
 }
 
 // 250ms debounceで選択変更を監視
 const debouncedNotify = debounce(notifySelectionChange, 250);
 
-document.addEventListener('mouseup', debouncedNotify);
-document.addEventListener('touchend', debouncedNotify);
+/**
+ * テキスト選択の監視を開始する
+ * Content Scriptとして注入された際に呼び出される
+ */
+function initTextSelector(): void {
+  document.addEventListener('mouseup', debouncedNotify);
+  document.addEventListener('touchend', debouncedNotify);
+}
 
-export { getSelectionState, notifySelectionChange };
+// Content Scriptとして実行された場合に自動初期化
+if (typeof document !== 'undefined') {
+  initTextSelector();
+}
+
+export { getSelectionState, notifySelectionChange, initTextSelector };

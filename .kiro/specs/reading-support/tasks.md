@@ -34,7 +34,7 @@
 
 ## 2. コア実装
 
-- [ ] 2.1 (P) content scriptでテキスト選択検知を構築
+- [x] 2.1 (P) content scriptでテキスト選択検知を構築
   - Webページ上のmouseup/touchイベントを監視するTextSelectorクラスを実装
   - window.getSelection()とlocation.hrefキャプチャを含むデバウンスされた選択追跡（250ms）を追加
   - 選択状態が変更されたときのservice workerへのメッセージ送信をセットアップ
