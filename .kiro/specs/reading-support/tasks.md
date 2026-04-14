@@ -61,7 +61,7 @@
   - _Boundary: Service Workerドメイン - Supabase統合_
   - _Depends: 2.2_
 
-- [ ] 2.4 (P) 保存操作用のコンテキストメニューハンドラーを構築
+- [x] 2.4 (P) 保存操作用のコンテキストメニューハンドラーを構築
   - Chrome context menu項目「Save to Supabase」を登録するContextMenuHandlerクラスを実装
   - MessageHandlerを介して現在のテキスト選択を取得するonClickedイベント処理を追加
   - メニュー項目がクリックされたときに保存操作を実行するSupabaseWriterとの統合
