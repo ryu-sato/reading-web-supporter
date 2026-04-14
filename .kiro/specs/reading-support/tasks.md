@@ -71,7 +71,7 @@
   - _Boundary: Service Workerドメイン - コンテキストメニュー統合_
   - _Depends: 2.3, 2.5_
 
-- [ ] 2.5 (P) メッセージルーティングシステムを作成
+- [x] 2.5 (P) メッセージルーティングシステムを作成
   - content scriptとservice worker間でメッセージをルーティングするMessageHandlerクラスを実装
   - 型ベースのメッセージディスパッチを含む一元化されたchrome.runtime.onMessageリスナーを追加
   - テキスト選択更新と保存操作リクエスト用のメッセージ契約をセットアップ
