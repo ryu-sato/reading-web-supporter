@@ -141,8 +141,8 @@ export class SupabaseWriter implements SupabaseWriterService {
       }
 
       try {
-        type InsertResult = { data: unknown; error: { code?: string; message?: string; status?: number } | null };
-        const { error } = await withTimeout(
+        type InsertResult = { data: Array<{ id: string; created_at: string }> | null; error: { code?: string; message?: string; status?: number } | null };
+        const { data, error } = await withTimeout(
           supabase.from('readings').insert(record) as unknown as Promise<InsertResult>,
           TIMEOUT_MS
         );
@@ -155,10 +155,11 @@ export class SupabaseWriter implements SupabaseWriterService {
           };
         }
 
-        // 成功（UUID はクライアント側で生成済み）
+        // 成功: Supabase レスポンスの data[0] を返す（null の場合はフォールバック）
+        const responseData = data && data.length > 0 ? data[0] : { id: crypto.randomUUID(), created_at };
         return {
           success: true,
-          data: { id: crypto.randomUUID(), created_at },
+          data: { id: responseData.id, created_at: responseData.created_at },
         };
       } catch (err) {
         // ネットワーク障害またはタイムアウト
