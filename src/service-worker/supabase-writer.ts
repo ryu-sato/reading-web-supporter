@@ -142,7 +142,7 @@ export class SupabaseWriter implements SupabaseWriterService {
       try {
         type InsertResult = { data: Array<{ id: string; created_at: string }> | null; error: { code?: string; message?: string; status?: number } | null };
         const { data, error } = await withTimeout(
-          supabase.from('readings').insert(record) as unknown as Promise<InsertResult>,
+          supabase.from('readings').insert(record).select() as unknown as Promise<InsertResult>,
           TIMEOUT_MS
         );
 
