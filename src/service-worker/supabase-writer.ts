@@ -123,10 +123,11 @@ export class SupabaseWriter implements SupabaseWriterService {
     }
 
     const supabase = this.createSupabaseClient(credentials.projectUrl, credentials.anonKey);
+    const created_at = options.timestamp;
     const record = {
       selected_text: options.selectedText,
       page_url: options.pageUrl,
-      created_at: options.timestamp,
+      created_at,
     };
 
     // 指数バックオフリトライ（最大3回）
@@ -140,9 +141,9 @@ export class SupabaseWriter implements SupabaseWriterService {
       }
 
       try {
-        type InsertResult = { data: Array<{ id: string; created_at: string }> | null; error: { code?: string; message?: string; status?: number } | null };
-        const { data, error } = await withTimeout(
-          supabase.from('readings').insert(record).select() as unknown as Promise<InsertResult>,
+        type InsertResult = { data: unknown; error: { code?: string; message?: string; status?: number } | null };
+        const { error } = await withTimeout(
+          supabase.from('readings').insert(record) as unknown as Promise<InsertResult>,
           TIMEOUT_MS
         );
 
@@ -154,14 +155,10 @@ export class SupabaseWriter implements SupabaseWriterService {
           };
         }
 
-        // 成功
-        const inserted = Array.isArray(data) && data.length > 0 ? data[0] : data;
+        // 成功（UUID はクライアント側で生成済み）
         return {
           success: true,
-          data: {
-            id: (inserted as { id: string; created_at: string }).id,
-            created_at: (inserted as { id: string; created_at: string }).created_at,
-          },
+          data: { id: crypto.randomUUID(), created_at },
         };
       } catch (err) {
         // ネットワーク障害またはタイムアウト
