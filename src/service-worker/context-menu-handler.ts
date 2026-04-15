@@ -144,6 +144,17 @@ export class ContextMenuHandler {
   }
 
   /**
+   * 選択状態に応じてコンテキストメニュー項目を有効/無効化する
+   * MessageHandler からの選択状態変化通知を受けて呼び出される
+   *
+   * Requirement 1.1: テキスト選択時にメニューを有効化
+   * Requirement 1.4: テキスト未選択時にメニューを無効化
+   */
+  updateMenuState(hasSelection: boolean): void {
+    chrome.contextMenus.update(MENU_ITEM_ID, { enabled: hasSelection });
+  }
+
+  /**
    * Chrome 通知を表示する
    */
   private showNotification(

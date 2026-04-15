@@ -75,11 +75,19 @@ const mockNotificationsCreate = jest.fn();
 // ── コンポーネントモック ─────────────────────────────────────────────────────────
 
 const mockRegister = jest.fn();
+const mockUpdateMenuState = jest.fn();
 const mockContextMenuHandlerConstructor = jest.fn().mockImplementation(() => ({
   register: mockRegister,
+  updateMenuState: mockUpdateMenuState,
 }));
 
-const mockMessageHandlerConstructor = jest.fn().mockImplementation(() => ({}));
+let capturedSelectionChangeCallback: ((hasSelection: boolean) => void) | null = null;
+const mockOnSelectionChange = jest.fn((cb: (hasSelection: boolean) => void) => {
+  capturedSelectionChangeCallback = cb;
+});
+const mockMessageHandlerConstructor = jest.fn().mockImplementation(() => ({
+  onSelectionChange: mockOnSelectionChange,
+}));
 const mockSettingsManagerConstructor = jest.fn().mockImplementation(() => ({}));
 const mockSupabaseWriterConstructor = jest.fn().mockImplementation(() => ({}));
 
@@ -108,6 +116,7 @@ describe('background.ts - Service Worker オーケストレーション', () => 
     registeredStartupListeners.length = 0;
     registeredMessageListeners.length = 0;
     registeredOnClickedListeners.length = 0;
+    capturedSelectionChangeCallback = null;
 
     // background.ts をリセットして再インポートするためにモジュールキャッシュをクリア
     jest.resetModules();
@@ -196,6 +205,26 @@ describe('background.ts - Service Worker オーケストレーション', () => 
       registeredStartupListeners.forEach((listener) => listener());
 
       expect(mockRegister).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ── 選択状態→コンテキストメニュー状態の配線 (Req 1.1, 1.4) ──────────────────────
+
+  describe('MessageHandler → ContextMenuHandler 配線 (Req 1.1, 1.4)', () => {
+    it('MessageHandler.onSelectionChange が登録される', () => {
+      expect(mockOnSelectionChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('hasSelection: true のコールバックで updateMenuState(true) が呼ばれる (Req 1.1)', () => {
+      expect(capturedSelectionChangeCallback).not.toBeNull();
+      capturedSelectionChangeCallback!(true);
+      expect(mockUpdateMenuState).toHaveBeenCalledWith(true);
+    });
+
+    it('hasSelection: false のコールバックで updateMenuState(false) が呼ばれる (Req 1.4)', () => {
+      expect(capturedSelectionChangeCallback).not.toBeNull();
+      capturedSelectionChangeCallback!(false);
+      expect(mockUpdateMenuState).toHaveBeenCalledWith(false);
     });
   });
 });

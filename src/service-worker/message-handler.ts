@@ -30,6 +30,9 @@ declare const chrome: {
 /** 選択状態の型エイリアス */
 type SelectionState = TextSelectionMessage['payload'];
 
+/** 選択状態変化コールバックの型 */
+type SelectionChangeCallback = (hasSelection: boolean) => void;
+
 /** 初期選択状態 */
 const INITIAL_SELECTION: SelectionState = {
   selectedText: '',
@@ -49,6 +52,9 @@ const INITIAL_SELECTION: SelectionState = {
 export class MessageHandler {
   /** 現在のテキスト選択状態 */
   private currentSelection: SelectionState = { ...INITIAL_SELECTION };
+
+  /** 選択状態変化コールバック */
+  private selectionChangeCallback: SelectionChangeCallback | null = null;
 
   constructor() {
     chrome.runtime.onMessage.addListener(this.handleMessage.bind(this));
@@ -77,6 +83,17 @@ export class MessageHandler {
   }
 
   /**
+   * 選択状態変化コールバックを登録する
+   * background.ts がContextMenuHandler.updateMenuState() に接続するために使用する
+   *
+   * Requirement 1.1: 選択テキストがあるときにコンテキストメニューを有効化
+   * Requirement 1.4: 未選択時にコンテキストメニューを無効化
+   */
+  onSelectionChange(callback: SelectionChangeCallback): void {
+    this.selectionChangeCallback = callback;
+  }
+
+  /**
    * textSelectionUpdated メッセージの処理
    * Content Script からの選択状態通知を受け取り内部状態を更新する
    *
@@ -85,6 +102,7 @@ export class MessageHandler {
    */
   private handleTextSelectionUpdated(message: TextSelectionMessage): false {
     this.currentSelection = { ...message.payload };
+    this.selectionChangeCallback?.(message.payload.hasSelection);
     return false;
   }
 

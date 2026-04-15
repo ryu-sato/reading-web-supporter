@@ -299,6 +299,30 @@ describe('ContextMenuHandler', () => {
     });
   });
 
+  // ── updateMenuState ─────────────────────────────────────────────────────────
+
+  describe('updateMenuState() - コンテキストメニュー状態管理 (Req 1.1, 1.4)', () => {
+    it('hasSelection: true の場合、chrome.contextMenus.update でメニューを有効化する (Req 1.1)', () => {
+      handler.updateMenuState(true);
+
+      expect(mockContextMenusUpdate).toHaveBeenCalledTimes(1);
+      expect(mockContextMenusUpdate).toHaveBeenCalledWith(
+        'save-to-supabase',
+        { enabled: true }
+      );
+    });
+
+    it('hasSelection: false の場合、chrome.contextMenus.update でメニューを無効化する (Req 1.4)', () => {
+      handler.updateMenuState(false);
+
+      expect(mockContextMenusUpdate).toHaveBeenCalledTimes(1);
+      expect(mockContextMenusUpdate).toHaveBeenCalledWith(
+        'save-to-supabase',
+        { enabled: false }
+      );
+    });
+  });
+
   // ── 通知の構造 ──────────────────────────────────────────────────────────────
 
   describe('通知の構造', () => {

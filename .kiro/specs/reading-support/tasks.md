@@ -99,7 +99,7 @@
   - 拡張機能が適切に初期化され、すべてのservice workerコンポーネントが正常に通信する
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2_
 
-- [ ] 3.2 content scriptとservice workerメッセージングを接続
+- [x] 3.2 content scriptとservice workerメッセージングを接続
   - service workerへの適切なメッセージ送信を含むcontent scriptでTextSelectorを初期化
   - content scriptからのテキスト選択更新を受信するservice worker MessageHandlerをセットアップ
   - 選択イベントに基づいてメニューを有効/無効にするコンテキストメニュー状態管理を追加

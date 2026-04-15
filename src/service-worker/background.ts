@@ -53,7 +53,17 @@ chrome.runtime.onStartup.addListener(() => {
   contextMenuHandler.register();
 });
 
-// タスク 3.2 および 3.3 でコンポーネント間の配線が完成するまで、
-// 各インスタンスはコンストラクタ内のイベントリスナー登録の副作用のためにのみ初期化される。
+// ── コンポーネント間の配線 ────────────────────────────────────────────────────────
+
+/**
+ * テキスト選択状態の変化をコンテキストメニューの有効/無効に接続する
+ * Requirement 1.1: 選択テキストがある場合にメニューを有効化
+ * Requirement 1.4: 選択テキストがない場合にメニューを無効化
+ */
+messageHandler.onSelectionChange((hasSelection: boolean) => {
+  contextMenuHandler.updateMenuState(hasSelection);
+});
+
+// タスク 3.3 でオプションページと設定管理の配線が完成する。
 // export によりコンポーネントは将来の配線で参照可能になる。
 export { contextMenuHandler, messageHandler, settingsManager, supabaseWriter };

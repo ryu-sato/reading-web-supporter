@@ -261,6 +261,44 @@ describe('MessageHandler', () => {
     });
   });
 
+  // ── onSelectionChange コールバック ─────────────────────────────────────────
+
+  describe('onSelectionChange - 選択状態変化通知 (Req 1.1, 1.4)', () => {
+    it('textSelectionUpdated 受信時にコールバックが呼ばれる (Req 1.1)', () => {
+      const callback = jest.fn();
+      handler.onSelectionChange(callback);
+
+      dispatchMessage({
+        type: 'textSelectionUpdated',
+        payload: { selectedText: 'テキスト', pageUrl: 'https://example.com', hasSelection: true },
+      });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith(true);
+    });
+
+    it('hasSelection: false の場合、false でコールバックが呼ばれる (Req 1.4)', () => {
+      const callback = jest.fn();
+      handler.onSelectionChange(callback);
+
+      dispatchMessage({
+        type: 'textSelectionUpdated',
+        payload: { selectedText: '', pageUrl: 'https://example.com', hasSelection: false },
+      });
+
+      expect(callback).toHaveBeenCalledWith(false);
+    });
+
+    it('getSelection メッセージではコールバックが呼ばれない', () => {
+      const callback = jest.fn();
+      handler.onSelectionChange(callback);
+
+      dispatchMessage({ type: 'getSelection' });
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+  });
+
   // ── メッセージ損失なし ──────────────────────────────────────────────────────
 
   describe('メッセージの損失なし', () => {
