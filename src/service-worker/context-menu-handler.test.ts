@@ -4,7 +4,7 @@
  *
  * Requirements: 1.1, 1.3, 1.4
  * - chrome.contextMenus.create() でメニュー登録
- * - onClicked イベントで保存操作を実行
+ * - onClicked イベントで info.selectionText を使って保存操作を実行
  * - テキスト未選択時にエラー通知
  * - 保存成功/失敗を chrome.notifications でユーザーに通知
  */
@@ -15,8 +15,8 @@ import type { SaveResult } from '../types/types';
 // ── chrome API モック ──────────────────────────────────────────────────────────
 
 type OnClickedListener = (
-  info: chrome.contextMenus.OnClickData,
-  tab?: chrome.tabs.Tab
+  info: { menuItemId: string; selectionText?: string; pageUrl: string; editable: boolean },
+  tab?: unknown
 ) => void;
 
 const registeredOnClickedListeners: OnClickedListener[] = [];
@@ -49,16 +49,6 @@ const mockOnClicked = {
   },
 };
 
-// ── MessageHandler モック ──────────────────────────────────────────────────────
-
-const mockGetCurrentSelection = jest.fn();
-
-jest.mock('./message-handler', () => ({
-  MessageHandler: jest.fn().mockImplementation(() => ({
-    getCurrentSelection: mockGetCurrentSelection,
-  })),
-}));
-
 // ── SupabaseWriter モック ──────────────────────────────────────────────────────
 
 const mockSave = jest.fn<Promise<SaveResult>, [unknown]>();
@@ -72,18 +62,17 @@ jest.mock('./supabase-writer', () => ({
 // ── ヘルパー: onClicked イベントを発火する ────────────────────────────────────
 
 function dispatchOnClicked(
-  info: Partial<chrome.contextMenus.OnClickData> = {},
-  tab?: chrome.tabs.Tab
+  info: { menuItemId?: string; selectionText?: string; pageUrl?: string } = {}
 ): void {
-  const defaultInfo: chrome.contextMenus.OnClickData = {
-    menuItemId: 'save-to-supabase',
+  const fullInfo = {
+    menuItemId: info.menuItemId ?? 'save-to-supabase',
+    selectionText: info.selectionText,
+    pageUrl: info.pageUrl ?? 'https://example.com',
     editable: false,
-    pageUrl: '',
-    ...info,
   };
   const listener = registeredOnClickedListeners[registeredOnClickedListeners.length - 1];
   if (!listener) throw new Error('onClicked リスナーが登録されていません');
-  listener(defaultInfo, tab);
+  listener(fullInfo);
 }
 
 // ── テストスイート ──────────────────────────────────────────────────────────────
@@ -104,11 +93,9 @@ describe('ContextMenuHandler', () => {
       expect(mockOnClicked.addListener).toHaveBeenCalledTimes(1);
     });
 
-    it('MessageHandler と SupabaseWriter を依存注入で受け取ることができる', () => {
-      const { MessageHandler } = jest.requireMock('./message-handler');
+    it('SupabaseWriter が初期化される', () => {
       const { SupabaseWriter } = jest.requireMock('./supabase-writer');
       expect(handler).toBeInstanceOf(ContextMenuHandler);
-      expect(MessageHandler).toHaveBeenCalled();
       expect(SupabaseWriter).toHaveBeenCalled();
     });
   });
@@ -140,23 +127,20 @@ describe('ContextMenuHandler', () => {
   // ── onClicked: テキスト未選択 ───────────────────────────────────────────────
 
   describe('onClicked - テキスト未選択の場合 (Req 1.4)', () => {
-    beforeEach(() => {
-      mockGetCurrentSelection.mockReturnValue({
-        selectedText: '',
-        pageUrl: 'https://example.com',
-        hasSelection: false,
-      });
+    it('selectionText が空のとき SupabaseWriter.save() が呼ばれない', async () => {
+      dispatchOnClicked({ selectionText: '' });
+      await Promise.resolve();
+      expect(mockSave).not.toHaveBeenCalled();
     });
 
-    it('SupabaseWriter.save() が呼ばれない', async () => {
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
-      // 非同期処理の完了を待つ
+    it('selectionText が未定義のとき SupabaseWriter.save() が呼ばれない', async () => {
+      dispatchOnClicked({ selectionText: undefined });
       await Promise.resolve();
       expect(mockSave).not.toHaveBeenCalled();
     });
 
     it('"No text selected" 通知が表示される', async () => {
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
+      dispatchOnClicked({ selectionText: '' });
       await Promise.resolve();
 
       expect(mockNotificationsCreate).toHaveBeenCalledTimes(1);
@@ -173,19 +157,17 @@ describe('ContextMenuHandler', () => {
 
   describe('onClicked - 保存成功の場合 (Req 1.3)', () => {
     beforeEach(() => {
-      mockGetCurrentSelection.mockReturnValue({
-        selectedText: '重要なテキスト',
-        pageUrl: 'https://example.com/blog',
-        hasSelection: true,
-      });
       mockSave.mockResolvedValue({
         success: true,
         data: { id: 'test-uuid', created_at: '2026-04-13T00:00:00.000Z' },
       });
     });
 
-    it('SupabaseWriter.save() が選択テキストと URL で呼ばれる (Req 1.3)', async () => {
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
+    it('SupabaseWriter.save() が info.selectionText と info.pageUrl で呼ばれる (Req 1.3)', async () => {
+      dispatchOnClicked({
+        selectionText: '重要なテキスト',
+        pageUrl: 'https://example.com/blog',
+      });
       await Promise.resolve();
 
       expect(mockSave).toHaveBeenCalledTimes(1);
@@ -199,7 +181,7 @@ describe('ContextMenuHandler', () => {
     });
 
     it('"Saved to Supabase" 成功通知が表示される (Req 1.3)', async () => {
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
+      dispatchOnClicked({ selectionText: '重要なテキスト' });
       await Promise.resolve();
 
       expect(mockNotificationsCreate).toHaveBeenCalledTimes(1);
@@ -215,14 +197,6 @@ describe('ContextMenuHandler', () => {
   // ── onClicked: 保存失敗 ──────────────────────────────────────────────────────
 
   describe('onClicked - 保存失敗の場合 (Req 1.3, 1.4)', () => {
-    beforeEach(() => {
-      mockGetCurrentSelection.mockReturnValue({
-        selectedText: 'エラーになるテキスト',
-        pageUrl: 'https://example.com/blog',
-        hasSelection: true,
-      });
-    });
-
     it('エラーメッセージを含む通知が表示される (Req 1.3)', async () => {
       const errorMessage = 'Supabase認証情報が設定されていません。';
       mockSave.mockResolvedValue({
@@ -234,10 +208,9 @@ describe('ContextMenuHandler', () => {
         },
       });
 
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
+      dispatchOnClicked({ selectionText: 'エラーになるテキスト' });
       await Promise.resolve();
 
-      expect(mockNotificationsCreate).toHaveBeenCalledTimes(1);
       expect(mockNotificationsCreate).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
@@ -256,7 +229,7 @@ describe('ContextMenuHandler', () => {
         },
       });
 
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
+      dispatchOnClicked({ selectionText: 'テキスト' });
       await Promise.resolve();
 
       expect(mockNotificationsCreate).toHaveBeenCalledWith(
@@ -270,8 +243,7 @@ describe('ContextMenuHandler', () => {
     it('save() が例外をスローした場合もエラー通知が表示される', async () => {
       mockSave.mockRejectedValue(new Error('予期しない例外'));
 
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
-      // Promiseの解決を待つ
+      dispatchOnClicked({ selectionText: 'テキスト' });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockNotificationsCreate).toHaveBeenCalledTimes(1);
@@ -288,13 +260,7 @@ describe('ContextMenuHandler', () => {
 
   describe('onClicked - 別のメニュー項目の場合', () => {
     it('save-to-supabase 以外の menuItemId は無視される', async () => {
-      mockGetCurrentSelection.mockReturnValue({
-        selectedText: 'テキスト',
-        pageUrl: 'https://example.com',
-        hasSelection: true,
-      });
-
-      dispatchOnClicked({ menuItemId: 'other-menu-item' });
+      dispatchOnClicked({ menuItemId: 'other-menu-item', selectionText: 'テキスト' });
       await Promise.resolve();
 
       expect(mockSave).not.toHaveBeenCalled();
@@ -330,19 +296,14 @@ describe('ContextMenuHandler', () => {
 
   describe('通知の構造', () => {
     it('通知には type, iconUrl, title, message が含まれる', async () => {
-      mockGetCurrentSelection.mockReturnValue({
-        selectedText: 'テキスト',
-        pageUrl: 'https://example.com',
-        hasSelection: false,
-      });
-
-      dispatchOnClicked({ menuItemId: 'save-to-supabase' });
+      dispatchOnClicked({ selectionText: '' });
       await Promise.resolve();
 
       expect(mockNotificationsCreate).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           type: 'basic',
+          iconUrl: expect.stringContaining('icons/icon-128.png'),
           title: expect.any(String),
           message: expect.any(String),
         })

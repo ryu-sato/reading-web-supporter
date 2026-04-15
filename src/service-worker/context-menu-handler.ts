@@ -9,7 +9,6 @@
  * - 保存成功/失敗を chrome.notifications でユーザーに通知
  */
 
-import { MessageHandler } from './message-handler';
 import { SupabaseWriter } from './supabase-writer';
 import type { SaveTextOptions } from '../types/types';
 
@@ -68,7 +67,6 @@ declare const chrome: {
  * Requirement 1.4: テキスト未選択時にエラー通知を表示
  */
 export class ContextMenuHandler {
-  private readonly messageHandler: MessageHandler;
   private readonly writer: SupabaseWriter;
   private readonly boundOnClicked: (
     info: chrome.contextMenus.OnClickData,
@@ -76,7 +74,6 @@ export class ContextMenuHandler {
   ) => void;
 
   constructor() {
-    this.messageHandler = new MessageHandler();
     this.writer = new SupabaseWriter();
     this.boundOnClicked = this.handleOnClicked.bind(this);
     chrome.contextMenus.onClicked.addListener(this.boundOnClicked);
@@ -108,26 +105,30 @@ export class ContextMenuHandler {
     }
 
     // 非同期処理を起動（Promise はハンドラー内でキャッチ済み）
-    this.processMenuClick().catch(() => {
+    this.processMenuClick(info).catch(() => {
       // processMenuClick 内でエラーはすべてキャッチされているため、ここには到達しない
     });
   }
 
   /**
    * メニュークリック後の非同期保存処理
+   *
+   * info.selectionText を使うことで、サービスワーカー再起動による
+   * currentSelection 消失やメッセージ到達前のタイミング問題を回避する。
    */
-  private async processMenuClick(): Promise<void> {
-    const selection = this.messageHandler.getCurrentSelection();
+  private async processMenuClick(info: chrome.contextMenus.OnClickData): Promise<void> {
+    const selectedText = info.selectionText ?? '';
+    const pageUrl = info.pageUrl ?? '';
 
     // テキスト未選択の場合はエラー通知を表示して終了
-    if (!selection.hasSelection || selection.selectedText === '') {
+    if (!selectedText) {
       this.showNotification('error', 'No text selected', 'No text selected. Please select text before saving.');
       return;
     }
 
     const options: SaveTextOptions = {
-      selectedText: selection.selectedText,
-      pageUrl: selection.pageUrl,
+      selectedText,
+      pageUrl,
       timestamp: new Date().toISOString(),
     };
 
