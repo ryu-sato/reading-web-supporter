@@ -122,7 +122,7 @@
 
 ## 4. 検証
 
-- [ ] 4.1* 個別コンポーネントのユニットテスト
+- [x] 4.1* 個別コンポーネントのユニットテスト
   - モックされたDOMイベントでTextSelector選択検知とデバウンス動作をテスト
   - モックされたSupabaseクライアントでSupabaseWriter保存操作とエラー処理をテスト
   - モックされたChrome storage APIでSettingsManager CRUD操作と検証をテスト
