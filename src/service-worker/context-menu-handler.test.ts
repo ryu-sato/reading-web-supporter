@@ -44,6 +44,9 @@ const mockOnClicked = {
   notifications: {
     create: mockNotificationsCreate,
   },
+  runtime: {
+    getURL: (path: string) => `chrome-extension://test-id/${path}`,
+  },
 };
 
 // ── MessageHandler モック ──────────────────────────────────────────────────────

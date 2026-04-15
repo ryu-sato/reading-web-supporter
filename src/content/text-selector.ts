@@ -60,9 +60,13 @@ function notifySelectionChange(): void {
 
   const runtime = getChromeRuntime();
   if (runtime) {
-    runtime.sendMessage(message).catch(() => {
-      // Service Workerが未起動の場合は無視する
-    });
+    try {
+      runtime.sendMessage(message).catch(() => {
+        // Service Workerが未起動の場合は無視する
+      });
+    } catch (_e) {
+      // Extension context invalidated（拡張機能リロード後）の場合は無視する
+    }
   }
 }
 

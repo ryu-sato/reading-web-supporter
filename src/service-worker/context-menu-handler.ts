@@ -55,6 +55,9 @@ declare const chrome: {
       }
     ): void;
   };
+  runtime: {
+    getURL(path: string): string;
+  };
 };
 
 /**
@@ -165,7 +168,7 @@ export class ContextMenuHandler {
     const notificationId = `reading-supporter-${Date.now()}`;
     chrome.notifications.create(notificationId, {
       type: 'basic',
-      iconUrl: 'icons/icon-128.png',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title: `${APP_TITLE}: ${title}`,
       message,
     });
