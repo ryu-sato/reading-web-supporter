@@ -3,13 +3,18 @@
  * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
  *
  * Supabase認証情報の入力・保存・疎通確認を行う設定画面のロジック。
- * SettingsManager に委譲して認証情報の管理を一元化する。
+ * chrome.runtime.sendMessage を介して Service Worker (MessageHandler) と通信する。
+ * Options Page は SettingsManager を直接インポートしない（責務分離）。
  */
 
-import { SettingsManager } from '../service-worker/settings-manager';
 import type { SupabaseCredentials } from '../types/types';
 
-const settingsManager = new SettingsManager();
+// テスト環境でも参照できるようにグローバルchrome APIを型宣言
+declare const chrome: {
+  runtime: {
+    sendMessage(message: unknown): Promise<unknown>;
+  };
+};
 
 /**
  * フォームから認証情報を取得する
@@ -34,9 +39,11 @@ function showStatus(message: string, isError = false): void {
 /**
  * 既存の認証情報をフォームに事前入力する
  * Requirement 3.3: ブラウザを再起動しても設定が維持される
+ *
+ * chrome.runtime.sendMessage({type: 'getCredentials'}) で Service Worker に問い合わせる
  */
 async function loadExistingCredentials(): Promise<void> {
-  const creds = await settingsManager.getCredentials();
+  const creds = (await chrome.runtime.sendMessage({ type: 'getCredentials' })) as SupabaseCredentials | null;
 
   if (creds) {
     const urlInput = document.getElementById('project-url') as HTMLInputElement | null;
@@ -50,6 +57,8 @@ async function loadExistingCredentials(): Promise<void> {
  * 認証情報を保存する
  * Requirement 3.1: Supabase認証情報を入力・保存できる設定画面
  * Requirement 3.4: 認証情報変更時に即座に反映
+ *
+ * chrome.runtime.sendMessage({type: 'setCredentials', payload: creds}) で Service Worker に送信する
  */
 async function saveCredentials(): Promise<void> {
   const creds = getFormCredentials();
@@ -59,7 +68,10 @@ async function saveCredentials(): Promise<void> {
     return;
   }
 
-  const result = await settingsManager.setCredentials(creds);
+  const result = (await chrome.runtime.sendMessage({
+    type: 'setCredentials',
+    payload: creds,
+  })) as { success: boolean; error?: string };
 
   if (!result.success) {
     showStatus(result.error ?? '設定の保存に失敗しました', true);
@@ -72,11 +84,16 @@ async function saveCredentials(): Promise<void> {
 /**
  * 接続テストを実行する
  * Requirement 3.2: 接続先Supabaseへの疎通確認を行い、結果をユーザーに表示
+ *
+ * chrome.runtime.sendMessage({type: 'testConnection'}) で Service Worker に送信する
  */
 async function testConnection(): Promise<void> {
   showStatus('接続テスト中...');
 
-  const result = await settingsManager.testConnection();
+  const result = (await chrome.runtime.sendMessage({ type: 'testConnection' })) as {
+    success: boolean;
+    message: string;
+  };
 
   if (!result.success) {
     showStatus(result.message, true);

@@ -1,11 +1,15 @@
 /**
  * service-worker/message-handler.ts のユニットテスト
  * タスク 2.5: メッセージルーティングシステムを作成
+ * タスク 3.3: オプションページと設定管理の統合
  *
- * Requirements: 1.1, 1.2, 1.4, 2.1
+ * Requirements: 1.1, 1.2, 1.4, 2.1, 3.1, 3.2, 3.3, 3.4, 3.5
  * - chrome.runtime.onMessage リスナーを登録し、型ベースにhandlerをdispatch
  * - textSelectionUpdated: 現在の選択状態を内部で保持
  * - getSelection: 保持している選択状態をレスポンスで返す
+ * - setCredentials: SettingsManager.setCredentials() に委譲してレスポンスを返す
+ * - getCredentials: SettingsManager.getCredentials() に委譲してレスポンスを返す
+ * - testConnection: SupabaseWriter.testConnection() に委譲してレスポンスを返す
  * - 全メッセージが損失なく適切なチャネルで流れる
  */
 
@@ -40,6 +44,20 @@ const mockSender: Record<string, unknown> = {};
   },
 };
 
+// SettingsManager モック
+const mockGetCredentials = jest.fn();
+const mockSetCredentials = jest.fn();
+const mockSettingsManager = {
+  getCredentials: mockGetCredentials,
+  setCredentials: mockSetCredentials,
+};
+
+// SupabaseWriter モック
+const mockTestConnection = jest.fn();
+const mockSupabaseWriter = {
+  testConnection: mockTestConnection,
+};
+
 /**
  * 登録済みリスナーを呼び出すヘルパー
  */
@@ -58,7 +76,8 @@ describe('MessageHandler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     registeredListeners.length = 0;
-    handler = new MessageHandler();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler = new MessageHandler(mockSettingsManager as any, mockSupabaseWriter as any);
   });
 
   // ── 初期化 ──────────────────────────────────────────────────────────────────
@@ -329,6 +348,88 @@ describe('MessageHandler', () => {
       expect(sendResponse2).toHaveBeenCalledWith(
         expect.objectContaining({ selectedText: 'テキスト2' })
       );
+    });
+  });
+
+  // ── setCredentials メッセージハンドラー (Task 3.3) ──────────────────────────
+
+  describe('setCredentials メッセージの処理 (Req 3.1, 3.3, 3.4)', () => {
+    it('setCredentials メッセージで SettingsManager.setCredentials() が呼ばれる', async () => {
+      const creds = { projectUrl: 'https://example.supabase.co', anonKey: 'a'.repeat(40) };
+      mockSetCredentials.mockResolvedValue({ success: true });
+
+      const sendResponse = jest.fn();
+      const result = dispatchMessage({ type: 'setCredentials', payload: creds }, sendResponse);
+      expect(result).toBe(true); // 非同期レスポンスチャネルを維持
+
+      // 非同期なので待機
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockSetCredentials).toHaveBeenCalledWith(creds);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    it('setCredentials 失敗時もエラーレスポンスが返される (Req 3.5)', async () => {
+      const creds = { projectUrl: 'http://invalid.co', anonKey: 'short' };
+      mockSetCredentials.mockResolvedValue({ success: false, error: '無効な認証情報です' });
+
+      const sendResponse = jest.fn();
+      dispatchMessage({ type: 'setCredentials', payload: creds }, sendResponse);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: '無効な認証情報です' });
+    });
+  });
+
+  // ── getCredentials メッセージハンドラー (Task 3.3) ──────────────────────────
+
+  describe('getCredentials メッセージの処理 (Req 3.1, 3.3)', () => {
+    it('getCredentials メッセージで SettingsManager.getCredentials() が呼ばれる', async () => {
+      const creds = { projectUrl: 'https://example.supabase.co', anonKey: 'a'.repeat(40) };
+      mockGetCredentials.mockResolvedValue(creds);
+
+      const sendResponse = jest.fn();
+      const result = dispatchMessage({ type: 'getCredentials' }, sendResponse);
+      expect(result).toBe(true);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockGetCredentials).toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledWith(creds);
+    });
+
+    it('認証情報が未設定の場合、null が返される', async () => {
+      mockGetCredentials.mockResolvedValue(null);
+
+      const sendResponse = jest.fn();
+      dispatchMessage({ type: 'getCredentials' }, sendResponse);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith(null);
+    });
+  });
+
+  // ── testConnection メッセージハンドラー (Task 3.3) ────────────────────────────
+
+  describe('testConnection メッセージの処理 (Req 3.2)', () => {
+    it('testConnection メッセージで SupabaseWriter.testConnection() が呼ばれる', async () => {
+      mockTestConnection.mockResolvedValue({ success: true, message: '接続成功' });
+
+      const sendResponse = jest.fn();
+      const result = dispatchMessage({ type: 'testConnection' }, sendResponse);
+      expect(result).toBe(true);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockTestConnection).toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, message: '接続成功' });
+    });
+
+    it('testConnection 失敗時もエラーレスポンスが返される (Req 3.5)', async () => {
+      mockTestConnection.mockResolvedValue({ success: false, message: '接続に失敗しました' });
+
+      const sendResponse = jest.fn();
+      dispatchMessage({ type: 'testConnection' }, sendResponse);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, message: '接続に失敗しました' });
     });
   });
 });

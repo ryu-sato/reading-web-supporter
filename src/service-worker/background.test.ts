@@ -85,9 +85,11 @@ let capturedSelectionChangeCallback: ((hasSelection: boolean) => void) | null = 
 const mockOnSelectionChange = jest.fn((cb: (hasSelection: boolean) => void) => {
   capturedSelectionChangeCallback = cb;
 });
-const mockMessageHandlerConstructor = jest.fn().mockImplementation(() => ({
-  onSelectionChange: mockOnSelectionChange,
-}));
+const mockMessageHandlerConstructor = jest.fn().mockImplementation(
+  (_settingsManager?: unknown, _supabaseWriter?: unknown) => ({
+    onSelectionChange: mockOnSelectionChange,
+  })
+);
 const mockSettingsManagerConstructor = jest.fn().mockImplementation(() => ({}));
 const mockSupabaseWriterConstructor = jest.fn().mockImplementation(() => ({}));
 
@@ -148,6 +150,13 @@ describe('background.ts - Service Worker オーケストレーション', () => 
 
     it('MessageHandler がインスタンス化される', () => {
       expect(mockMessageHandlerConstructor).toHaveBeenCalledTimes(1);
+    });
+
+    it('MessageHandler に SettingsManager と SupabaseWriter が注入される (Task 3.3)', () => {
+      // MessageHandler のコンストラクターが settingsManager と supabaseWriter を受け取る
+      const [firstArg, secondArg] = mockMessageHandlerConstructor.mock.calls[0] as unknown[];
+      expect(firstArg).toBeDefined(); // settingsManager
+      expect(secondArg).toBeDefined(); // supabaseWriter
     });
 
     it('SettingsManager がインスタンス化される', () => {

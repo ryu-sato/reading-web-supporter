@@ -23,14 +23,17 @@ import { SupabaseWriter } from './supabase-writer';
 // Manifest V3 では service worker がイベントごとにアクティベートされるため、
 // モジュールレベルで初期化することで各アクティベーション時に確実に初期化される
 
-/** MessageHandler: Content Script ↔ Service Worker 間のメッセージルーティング */
-const messageHandler = new MessageHandler();
-
 /** SettingsManager: Supabase 認証情報の永続化管理 */
 const settingsManager = new SettingsManager();
 
 /** SupabaseWriter: Supabase への INSERT 操作 */
 const supabaseWriter = new SupabaseWriter();
+
+/**
+ * MessageHandler: Content Script ↔ Service Worker 間のメッセージルーティング
+ * Task 3.3: settingsManager と supabaseWriter を注入して Options Page メッセージを処理できるようにする
+ */
+const messageHandler = new MessageHandler(settingsManager, supabaseWriter);
 
 /** ContextMenuHandler: Chrome コンテキストメニュー統合 */
 const contextMenuHandler = new ContextMenuHandler();

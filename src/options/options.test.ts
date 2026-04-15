@@ -2,39 +2,22 @@
  * @jest-environment jsdom
  *
  * Options Page ロジックのユニットテスト
- * Requirements: 3.1, 3.2, 3.3, 3.4
+ * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
+ *
+ * Task 3.3: options.ts は chrome.runtime.sendMessage 経由で
+ * MessageHandler (Service Worker) と通信する新アーキテクチャ。
+ * SettingsManager を直接インポートせず、メッセージングに依存する。
  */
 
 // chrome API グローバルモック
-const mockStorageData: Record<string, unknown> = {};
-
-const mockChromeStorage = {
-  local: {
-    get: jest.fn((key: string, callback: (result: Record<string, unknown>) => void) => {
-      callback({ [key]: mockStorageData[key] });
-    }),
-    set: jest.fn((items: Record<string, unknown>, callback?: () => void) => {
-      Object.assign(mockStorageData, items);
-      if (callback) callback();
-    }),
-    remove: jest.fn((keys: string | string[], callback?: () => void) => {
-      if (typeof keys === 'string') {
-        delete mockStorageData[keys];
-      } else {
-        (keys as string[]).forEach((k) => delete mockStorageData[k]);
-      }
-      if (callback) callback();
-    }),
-  },
-};
+const mockSendMessage = jest.fn();
 
 const mockChromeRuntime = {
-  sendMessage: jest.fn().mockResolvedValue(undefined),
+  sendMessage: mockSendMessage,
   lastError: undefined,
 };
 
 (global as unknown as { chrome: unknown }).chrome = {
-  storage: mockChromeStorage,
   runtime: mockChromeRuntime,
 };
 
@@ -68,8 +51,6 @@ import {
 
 describe('options.ts', () => {
   beforeEach(() => {
-    // ストレージとモックをリセット
-    Object.keys(mockStorageData).forEach((k) => delete mockStorageData[k]);
     jest.clearAllMocks();
     setupDOM();
   });
@@ -114,8 +95,13 @@ describe('options.ts', () => {
 
   describe('loadExistingCredentials() - Req 3.3', () => {
     it('認証情報が未保存の場合、フォームは空のまま', async () => {
+      // getCredentials メッセージに対して null を返す
+      mockSendMessage.mockResolvedValue(null);
+
       setupDOM('', '');
       await loadExistingCredentials();
+
+      expect(mockSendMessage).toHaveBeenCalledWith({ type: 'getCredentials' });
       const urlInput = document.getElementById('project-url') as HTMLInputElement;
       const keyInput = document.getElementById('anon-key') as HTMLInputElement;
       expect(urlInput.value).toBe('');
@@ -123,15 +109,15 @@ describe('options.ts', () => {
     });
 
     it('保存済みの認証情報をフォームに事前入力する', async () => {
-      // SettingsManager が使うストレージキー 'supabse_credentials' にセット
-      mockStorageData['supabse_credentials'] = {
+      // getCredentials メッセージに対して認証情報を返す
+      mockSendMessage.mockResolvedValue({
         projectUrl: 'https://saved.supabase.co',
         anonKey: 'a'.repeat(40),
-        lastVerified: '2024-01-01T00:00:00.000Z',
-      };
+      });
 
       await loadExistingCredentials();
 
+      expect(mockSendMessage).toHaveBeenCalledWith({ type: 'getCredentials' });
       const urlInput = document.getElementById('project-url') as HTMLInputElement;
       const keyInput = document.getElementById('anon-key') as HTMLInputElement;
       expect(urlInput.value).toBe('https://saved.supabase.co');
@@ -142,82 +128,89 @@ describe('options.ts', () => {
   // ── saveCredentials ─────────────────────────────────────────────────────────
 
   describe('saveCredentials() - Req 3.1, 3.4', () => {
-    it('URLとAPIキーが空の場合、エラーメッセージを表示する', async () => {
+    it('URLとAPIキーが空の場合、エラーメッセージを表示する（メッセージ送信なし）', async () => {
       setupDOM('', '');
       await saveCredentials();
       const statusEl = document.getElementById('status');
       expect(statusEl?.className).toContain('error');
+      // 空の場合はメッセージを送信しない
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it('有効な認証情報を SettingsManager 経由で保存する (Req 3.1)', async () => {
+    it('有効な認証情報を setCredentials メッセージで送信する (Req 3.1)', async () => {
       setupDOM('https://example.supabase.co', 'a'.repeat(40));
+      mockSendMessage.mockResolvedValue({ success: true });
+
       await saveCredentials();
-      // SettingsManager は 'supabse_credentials' キーで保存する
-      const stored = mockStorageData['supabse_credentials'] as Record<string, unknown> | undefined;
-      expect(stored).toBeDefined();
-      expect(stored?.projectUrl).toBe('https://example.supabase.co');
-      expect(stored?.anonKey).toBe('a'.repeat(40));
+
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        type: 'setCredentials',
+        payload: {
+          projectUrl: 'https://example.supabase.co',
+          anonKey: 'a'.repeat(40),
+        },
+      });
     });
 
     it('保存成功後、成功ステータスを表示する', async () => {
       setupDOM('https://example.supabase.co', 'a'.repeat(40));
+      mockSendMessage.mockResolvedValue({ success: true });
+
       await saveCredentials();
+
       const statusEl = document.getElementById('status');
       expect(statusEl?.className).toContain('success');
       expect(statusEl?.textContent).toBeTruthy();
     });
 
-    it('無効なURL（HTTP）の場合、エラーステータスを表示する', async () => {
-      setupDOM('http://example.supabase.co', 'a'.repeat(40));
-      await saveCredentials();
-      const statusEl = document.getElementById('status');
-      expect(statusEl?.className).toContain('error');
-    });
-
-    it('APIキーが短すぎる場合、エラーステータスを表示する', async () => {
-      setupDOM('https://example.supabase.co', 'short');
-      await saveCredentials();
-      const statusEl = document.getElementById('status');
-      expect(statusEl?.className).toContain('error');
-    });
-
-    it('保存後に認証情報変更通知が送信される (Req 3.4)', async () => {
+    it('Service Worker からエラーが返された場合、エラーステータスを表示する (Req 3.5)', async () => {
       setupDOM('https://example.supabase.co', 'a'.repeat(40));
+      mockSendMessage.mockResolvedValue({ success: false, error: '無効な認証情報です' });
+
       await saveCredentials();
-      expect(mockChromeRuntime.sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'credentialsUpdated' })
-      );
+
+      const statusEl = document.getElementById('status');
+      expect(statusEl?.className).toContain('error');
+      expect(statusEl?.textContent).toContain('無効な認証情報');
     });
   });
 
   // ── testConnection ──────────────────────────────────────────────────────────
 
   describe('testConnection() - Req 3.2', () => {
-    it('認証情報が未設定の場合、接続失敗メッセージを表示する', async () => {
-      // ストレージは空
+    it('testConnection メッセージを Service Worker に送信する', async () => {
+      mockSendMessage.mockResolvedValue({ success: false, message: '接続情報が未設定です' });
+
       await testConnection();
+
+      expect(mockSendMessage).toHaveBeenCalledWith({ type: 'testConnection' });
+    });
+
+    it('接続失敗時、エラーメッセージを表示する (Req 3.5)', async () => {
+      mockSendMessage.mockResolvedValue({ success: false, message: 'Supabase接続に失敗しました' });
+
+      await testConnection();
+
       const statusEl = document.getElementById('status');
       expect(statusEl?.className).toContain('error');
       expect(statusEl?.textContent).toBeTruthy();
     });
 
-    it('認証情報が設定済みの場合、接続成功メッセージを表示する (Req 3.2)', async () => {
-      mockStorageData['supabse_credentials'] = {
-        projectUrl: 'https://example.supabase.co',
-        anonKey: 'a'.repeat(40),
-        lastVerified: '2024-01-01T00:00:00.000Z',
-      };
+    it('接続成功時、成功メッセージを表示する (Req 3.2)', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, message: '接続成功しました' });
 
       await testConnection();
+
       const statusEl = document.getElementById('status');
       expect(statusEl?.className).toContain('success');
       expect(statusEl?.textContent).toBeTruthy();
     });
 
     it('接続テスト中のステータスメッセージを表示する', async () => {
-      // SettingsManagerのtestConnectionが呼ばれる前のテスト中メッセージ確認
-      // 非同期なので、テストは最終状態を確認する（認証情報なし→失敗）
+      mockSendMessage.mockResolvedValue({ success: false, message: '接続失敗' });
+
       await testConnection();
+
       const statusEl = document.getElementById('status');
       // エラー or 成功のどちらかが表示されていることを確認
       expect(statusEl?.className).toMatch(/error|success/);

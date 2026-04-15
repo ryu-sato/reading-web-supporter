@@ -1,16 +1,22 @@
 /**
  * Service Worker メッセージルーティングシステム
  * タスク 2.5: メッセージルーティングシステムを作成
+ * タスク 3.3: オプションページと設定管理の統合
  *
- * Requirements: 1.1, 1.2, 1.4, 2.1
+ * Requirements: 1.1, 1.2, 1.4, 2.1, 3.1, 3.2, 3.3, 3.4, 3.5
  *
  * Content Script と Service Worker 間のメッセージを一元管理します。
  * - chrome.runtime.onMessage リスナーを登録し、型ベースのディスパッチを行う
  * - textSelectionUpdated: 現在の選択状態を内部で保持（ContextMenuHandler が参照）
  * - getSelection: 保持している選択状態をレスポンスで返す（ContextMenuHandler からのリクエスト）
+ * - setCredentials: SettingsManager.setCredentials() に委譲（Options Page からのリクエスト）
+ * - getCredentials: SettingsManager.getCredentials() に委譲（Options Page からのリクエスト）
+ * - testConnection: SupabaseWriter.testConnection() に委譲（Options Page からのリクエスト）
  */
 
-import type { ExtensionMessage, TextSelectionMessage } from '../types/types';
+import type { ExtensionMessage, TextSelectionMessage, SupabaseCredentials } from '../types/types';
+import { SettingsManager } from './settings-manager';
+import { SupabaseWriter } from './supabase-writer';
 
 // テスト環境でも参照できるようにグローバルchrome APIを型宣言
 declare const chrome: {
@@ -26,6 +32,17 @@ declare const chrome: {
     };
   };
 };
+
+/** SettingsManager の最小インターフェース（テスト用にインジェクション可能） */
+interface ISettingsManager {
+  getCredentials(): Promise<SupabaseCredentials | null>;
+  setCredentials(creds: SupabaseCredentials): Promise<{ success: boolean; error?: string }>;
+}
+
+/** SupabaseWriter の最小インターフェース（テスト用にインジェクション可能） */
+interface ISupabaseWriter {
+  testConnection(): Promise<{ success: boolean; message: string }>;
+}
 
 /** 選択状態の型エイリアス */
 type SelectionState = TextSelectionMessage['payload'];
@@ -48,6 +65,7 @@ const INITIAL_SELECTION: SelectionState = {
  * Requirement 1.2: 保存操作実行時、ContextMenuHandler が現在の選択状態を参照できるよう提供する
  * Requirement 1.4: テキスト未選択状態も正しく保持し、ContextMenuHandler が判定できるようにする
  * Requirement 2.1: 選択テキスト・URLを損失なく保持・提供する
+ * Requirement 3.1-3.5: Options Page からの設定管理メッセージを SettingsManager / SupabaseWriter に委譲する
  */
 export class MessageHandler {
   /** 現在のテキスト選択状態 */
@@ -56,7 +74,19 @@ export class MessageHandler {
   /** 選択状態変化コールバック */
   private selectionChangeCallback: SelectionChangeCallback | null = null;
 
-  constructor() {
+  /** 認証情報管理（Options Page からのリクエストを処理） */
+  private settingsManager: ISettingsManager;
+
+  /** Supabase 接続テスト用（Options Page からの testConnection リクエストを処理） */
+  private supabaseWriter: ISupabaseWriter;
+
+  /**
+   * @param settingsManager - SettingsManager インスタンス（省略時は自動生成）
+   * @param supabaseWriter  - SupabaseWriter インスタンス（省略時は自動生成）
+   */
+  constructor(settingsManager?: ISettingsManager, supabaseWriter?: ISupabaseWriter) {
+    this.settingsManager = settingsManager ?? new SettingsManager();
+    this.supabaseWriter = supabaseWriter ?? new SupabaseWriter();
     chrome.runtime.onMessage.addListener(this.handleMessage.bind(this));
   }
 
@@ -75,6 +105,15 @@ export class MessageHandler {
 
       case 'getSelection':
         return this.handleGetSelection(sendResponse);
+
+      case 'setCredentials':
+        return this.handleSetCredentials(message.payload, sendResponse);
+
+      case 'getCredentials':
+        return this.handleGetCredentials(sendResponse);
+
+      case 'testConnection':
+        return this.handleTestConnection(sendResponse);
 
       default:
         // 未知のメッセージタイプは無視（他ハンドラーへ委譲）
@@ -117,6 +156,56 @@ export class MessageHandler {
    */
   private handleGetSelection(sendResponse: (response?: unknown) => void): true {
     sendResponse({ ...this.currentSelection });
+    return true;
+  }
+
+  /**
+   * setCredentials メッセージの処理
+   * Options Page から送信された認証情報を SettingsManager に委譲して保存する
+   *
+   * Requirement 3.1: URLとAPIキーの入力・保存
+   * Requirement 3.3: セキュアなローカルストレージへの永続化
+   * Requirement 3.4: 変更時に即座に反映
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleSetCredentials(
+    payload: SupabaseCredentials,
+    sendResponse: (response?: unknown) => void
+  ): true {
+    this.settingsManager.setCredentials(payload).then((result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  /**
+   * getCredentials メッセージの処理
+   * SettingsManager から認証情報を取得して Options Page へ返す
+   *
+   * Requirement 3.3: ブラウザを再起動しても設定が維持される
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleGetCredentials(sendResponse: (response?: unknown) => void): true {
+    this.settingsManager.getCredentials().then((creds) => {
+      sendResponse(creds);
+    });
+    return true;
+  }
+
+  /**
+   * testConnection メッセージの処理
+   * SupabaseWriter.testConnection() を実行して結果を Options Page へ返す
+   *
+   * Requirement 3.2: 保存時に Supabase への疎通確認を行い、結果をユーザーに表示
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleTestConnection(sendResponse: (response?: unknown) => void): true {
+    this.supabaseWriter.testConnection().then((result) => {
+      sendResponse(result);
+    });
     return true;
   }
 
