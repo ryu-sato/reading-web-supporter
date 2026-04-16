@@ -122,7 +122,7 @@
 
 ## 4. 検証
 
-- [x] 4.1* 個別コンポーネントのユニットテスト
+- [x]* 4.1 個別コンポーネントのユニットテスト
   - モックされたDOMイベントでTextSelector選択検知とデバウンス動作をテスト
   - モックされたSupabaseクライアントでSupabaseWriter保存操作とエラー処理をテスト
   - モックされたChrome storage APIでSettingsManager CRUD操作と検証をテスト
@@ -130,12 +130,83 @@
   - すべてのコンポーネントが外部依存関係の適切なモッキングで分離されたユニットテストに合格
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [x] 4.2* エンドツーエンドテストシナリオ
+- [x]* 4.2 エンドツーエンドテストシナリオ
   - 完全なフローをテスト：テキスト選択 → コンテキストメニュー → 保存 → Supabaseデータベース検証
   - 設定構成をテスト：認証情報入力 → 接続テスト → 永続化検証
   - エラーシナリオをテスト：ネットワーク障害、無効な認証情報、空のテキスト選択処理
   - テキスト選択から成功したデータベースストレージまで完全なユーザーワークフローが正常に機能
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5_
+
+## 5. ハイライト機能の型定義
+
+- [ ] 5.1 共有型にハイライト機能の型定義を追加
+  - `GetHighlightsMessage`インターフェース（`type: 'getHighlights'; payload: { pageUrl: string }`）をtypes.tsに追加
+  - `HighlightsResponse`インターフェース（`success: boolean; texts?: string[]; error?: { code, message }`）を追加
+  - `ExtensionMessage`共用体型に`GetHighlightsMessage`を追加
+  - 全コンポーネントがハイライト機能のメッセージ型をインポート可能でビルドエラーがない
+  - _Requirements: 4.1, 4.6_
+  - _Boundary: 共有型定義_
+
+## 6. ハイライト機能コア実装
+
+- [ ] 6.1 (P) SupabaseReaderコンポーネントを実装
+  - `fetchSavedTexts(options: FetchHighlightsOptions): Promise<HighlightsResponse>`メソッドを実装
+  - SettingsManagerから認証情報を取得してSupabaseクライアントを初期化
+  - `supabase.from('readings').select('selected_text').eq('page_url', pageUrl)`クエリを実装
+  - タイムアウト（10秒）でネットワークエラーと判定するロジックを追加
+  - 取得失敗時は`success: false`の`HighlightsResponse`を返す（例外をスローしない）
+  - SELECT操作がSupabaseからテキスト文字列配列を正常に取得またはエラーレスポンスを返す
+  - _Requirements: 4.1, 4.5_
+  - _Boundary: Service Worker Domain - Supabase統合_
+  - _Depends: 5.1_
+
+- [ ] 6.2 (P) HighlightControllerコンポーネントを実装
+  - `DOMContentLoaded`後に起動し`isConfigured`メッセージでSettingsManagerの設定状態を確認
+  - 認証情報未設定時は処理を即座に中断する（要件4.6）
+  - Service Workerへ`getHighlights`メッセージを送信し保存済みテキストリストを取得
+  - DOM TreeWalkerでテキストノードを走査し一致箇所を`<mark class="reading-support-highlight">`でラップ
+  - 複数テキストを全件ハイライト、DOM上に見つからないテキストはスキップして継続（要件4.3, 4.4）
+  - Supabase取得失敗時はページ表示を妨げずサイレント中断（要件4.5）
+  - ハイライトCSS（`background: #FFFF99; color: inherit;`）を`<style>`タグとして一度だけ注入
+  - 保存済みテキストを含むページでDOMに`<mark>`要素が追加され視覚的にハイライト表示される
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
+  - _Boundary: Content Script Domain_
+  - _Depends: 5.1_
+
+## 7. ハイライト機能統合
+
+- [ ] 7.1 MessageHandlerにgetHighlightsハンドラを追加
+  - `getHighlights`メッセージ受信時にSupabaseReader.fetchSavedTexts()を実行するハンドラを追加
+  - 取得結果（`HighlightsResponse`）をContent Scriptに非同期で返却する処理を実装
+  - `getHighlights`メッセージがContent ScriptからService Workerを経由してSupabaseへ正常に流れる
+  - _Requirements: 4.1, 4.5_
+  - _Boundary: Service Worker Domain - メッセージルーティング_
+  - _Depends: 6.1_
+
+- [ ] 7.2 HighlightControllerをContent Scriptに統合しService Workerを更新
+  - Content ScriptエントリポイントにHighlightControllerのインスタンスを作成・初期化
+  - background.tsにSupabaseReaderのインスタンスを追加してService Workerコンポーネントを更新
+  - ページロード時にHighlightControllerが起動し保存済みテキストがハイライト表示される完全なフローを確認
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
+  - _Depends: 6.2, 7.1_
+
+## 8. ハイライト機能検証
+
+- [ ]* 8.1 HighlightControllerとSupabaseReaderのユニットテスト
+  - HighlightController: 単一/複数テキストのハイライト（`<mark>`要素の挿入を確認）をテスト
+  - HighlightController: DOM上に存在しないテキストのスキップと継続をテスト
+  - HighlightController: 認証情報未設定時の即時中断をテスト
+  - HighlightController: Supabase取得失敗時のサイレント中断をテスト
+  - SupabaseReader: 成功ケース（テキスト配列返却）、0件ケース（空配列）をテスト
+  - SupabaseReader: ネットワークエラー、認証エラー（AUTH_FAILEDコード）をテスト
+  - すべてのコンポーネントが外部依存関係のモッキングで分離されたユニットテストに合格
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
+
+- [ ]* 8.2 ハイライト機能のエンドツーエンドテスト
+  - 保存済みテキストを含むページロード → ハイライト表示の完全フローをテスト
+  - 認証情報未設定状態でのページロード → ハイライト処理なし（エラーなし）をテスト
+  - Supabase取得失敗シナリオ → ページ表示が正常であることをテスト
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
 ## 実装メモ
 
@@ -144,3 +215,6 @@
 - 統合タスクは適切なメッセージフローを確保してコンポーネントを配線
 - (P)マークのタスクは主要タスクグループ内で並行実行可能
 - *マークのタスクはMVP後に延期可能なオプションのテストカバレッジ
+- タスク1〜4はRequirement 1-3（テキスト選択・保存・認証情報管理）をカバーし完了済み
+- タスク5〜8はRequirement 4（保存済みテキストのハイライト表示）の新規実装
+- ハイライト機能はSupabaseのanon roleにSELECTポリシーが必要（ユーザーがRLSポリシーを更新する必要あり）
