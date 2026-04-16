@@ -113,3 +113,25 @@ const { data, error } = await supabase
 1. **Table Schema**: Supabase 側のテーブル構造("readings" table)は本仕様では定義しない。ユーザーが別途作成。Design では required columns を明記。
 2. **Error Notification**: 保存失敗時のユーザー通知方法（Toast, Badge, Popup）は Design phase で確定。
 3. **Batch Handling**: 複数テキスト連続選択時のバッチ送信か都度送信か → 都度送信が自然だが、future optimization として記録。
+
+---
+
+## Design Synthesis (Requirement 4 追加)
+
+### Generalization
+- SupabaseWriter（INSERT専用）に対し、SupabaseReader（SELECT専用）を新設することで責任分離を維持。
+  将来の読み取り操作（検索・フィルタ等）はすべて SupabaseReader に集約できるインターフェース設計。
+
+### Build vs Adopt
+- ハイライト DOM 操作: TreeWalker + Range によるブラウザネイティブ実装を採用。
+  mark.js 等の外部ライブラリは不要（シンプルなユースケースにはオーバーエンジニアリング）。
+- HighlightController は Content Script に追加（DOM操作はページコンテキスト必須）。
+
+### Simplification
+- ハイライトのキャッシュは不要（ページロード毎の取得で十分）。
+- HighlightController はページロード時の1回実行のみ（監視・動的更新機構は将来スコープ）。
+- CSS は固定スタイルとしてハードコード（ユーザーカスタマイズは Out of Boundary）。
+
+### Key Architecture Decision: RLS SELECT ポリシー必要
+- 要件4（ハイライト取得）の追加により、Supabase の anon role に SELECT 権限が必要。
+- これはユーザーが RLS ポリシーを更新する必要があることを意味し、設計ドキュメントに明記した。
