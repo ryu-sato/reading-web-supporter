@@ -17,6 +17,7 @@
 import type { ExtensionMessage, TextSelectionMessage, SupabaseCredentials } from '../types/types';
 import { SettingsManager } from './settings-manager';
 import { SupabaseWriter } from './supabase-writer';
+import { SupabaseReader } from './supabase-reader';
 
 // テスト環境でも参照できるようにグローバルchrome APIを型宣言
 declare const chrome: {
@@ -37,11 +38,17 @@ declare const chrome: {
 interface ISettingsManager {
   getCredentials(): Promise<SupabaseCredentials | null>;
   setCredentials(creds: SupabaseCredentials): Promise<{ success: boolean; error?: string }>;
+  isConfigured(): Promise<boolean>;
 }
 
 /** SupabaseWriter の最小インターフェース（テスト用にインジェクション可能） */
 interface ISupabaseWriter {
   testConnection(): Promise<{ success: boolean; message: string }>;
+}
+
+/** SupabaseReader の最小インターフェース（テスト用にインジェクション可能） */
+interface ISupabaseReader {
+  fetchSavedTexts(options: { pageUrl: string }): Promise<{ success: boolean; texts?: string[]; error?: { code: string; message: string } }>;
 }
 
 /** 選択状態の型エイリアス */
@@ -80,13 +87,22 @@ export class MessageHandler {
   /** Supabase 接続テスト用（Options Page からの testConnection リクエストを処理） */
   private supabaseWriter: ISupabaseWriter;
 
+  /** Supabase 読み取り用（HighlightController からの getHighlights リクエストを処理） */
+  private supabaseReader: ISupabaseReader;
+
   /**
    * @param settingsManager - SettingsManager インスタンス（省略時は自動生成）
    * @param supabaseWriter  - SupabaseWriter インスタンス（省略時は自動生成）
+   * @param supabaseReader  - SupabaseReader インスタンス（省略時は自動生成）
    */
-  constructor(settingsManager?: ISettingsManager, supabaseWriter?: ISupabaseWriter) {
+  constructor(
+    settingsManager?: ISettingsManager,
+    supabaseWriter?: ISupabaseWriter,
+    supabaseReader?: ISupabaseReader
+  ) {
     this.settingsManager = settingsManager ?? new SettingsManager();
     this.supabaseWriter = supabaseWriter ?? new SupabaseWriter();
+    this.supabaseReader = supabaseReader ?? new SupabaseReader();
     chrome.runtime.onMessage.addListener(this.handleMessage.bind(this));
   }
 
@@ -114,6 +130,12 @@ export class MessageHandler {
 
       case 'testConnection':
         return this.handleTestConnection(sendResponse);
+
+      case 'getHighlights':
+        return this.handleGetHighlights(message.payload.pageUrl, sendResponse);
+
+      case 'isConfigured':
+        return this.handleIsConfigured(sendResponse);
 
       default:
         // 未知のメッセージタイプは無視（他ハンドラーへ委譲）
@@ -205,6 +227,40 @@ export class MessageHandler {
   private handleTestConnection(sendResponse: (response?: unknown) => void): true {
     this.supabaseWriter.testConnection().then((result) => {
       sendResponse(result);
+    });
+    return true;
+  }
+
+  /**
+   * getHighlights メッセージの処理
+   * HighlightController から送信されたページ URL に対応する保存済みテキストを取得する
+   *
+   * Requirement 4.1: ページロード時、保存済みテキストを Supabase から取得
+   * Requirement 4.5: Supabase 取得失敗時はページ表示を妨げず中断
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleGetHighlights(
+    pageUrl: string,
+    sendResponse: (response?: unknown) => void
+  ): true {
+    this.supabaseReader.fetchSavedTexts({ pageUrl }).then((result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  /**
+   * isConfigured メッセージの処理
+   * HighlightController が認証情報の設定状態を確認するために使用する
+   *
+   * Requirement 4.6: 認証情報未設定時はハイライト取得処理を実行しない
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleIsConfigured(sendResponse: (response?: unknown) => void): true {
+    this.settingsManager.isConfigured().then((configured: boolean) => {
+      sendResponse({ configured });
     });
     return true;
   }

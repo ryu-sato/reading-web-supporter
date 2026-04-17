@@ -157,4 +157,5 @@ export type ExtensionMessage =
   | { type: 'getCredentials' }
   | { type: 'setCredentials'; payload: SupabaseCredentials }
   | { type: 'testConnection' }
+  | { type: 'isConfigured' }
   | GetHighlightsMessage;
