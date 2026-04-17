@@ -203,21 +203,25 @@ describe('types/types.ts - 型定義', () => {
     it('成功時のHighlightsResponseを作成できる', () => {
       const response: HighlightsResponse = {
         success: true,
-        texts: ['保存済みテキスト1', '保存済みテキスト2', '保存済みテキスト3'],
+        highlights: [
+          { text: '保存済みテキスト1' },
+          { text: '保存済みテキスト2' },
+          { text: '保存済みテキスト3' },
+        ],
       };
       expect(response.success).toBe(true);
-      expect(response.texts).toHaveLength(3);
-      expect(response.texts?.[0]).toBe('保存済みテキスト1');
+      expect(response.highlights).toHaveLength(3);
+      expect(response.highlights?.[0].text).toBe('保存済みテキスト1');
       expect(response.error).toBeUndefined();
     });
 
     it('成功時（0件）のHighlightsResponseを作成できる', () => {
       const response: HighlightsResponse = {
         success: true,
-        texts: [],
+        highlights: [],
       };
       expect(response.success).toBe(true);
-      expect(response.texts).toHaveLength(0);
+      expect(response.highlights).toHaveLength(0);
       expect(response.error).toBeUndefined();
     });
 
@@ -231,7 +235,7 @@ describe('types/types.ts - 型定義', () => {
       };
       expect(response.success).toBe(false);
       expect(response.error?.code).toBe('NO_CREDENTIALS');
-      expect(response.texts).toBeUndefined();
+      expect(response.highlights).toBeUndefined();
     });
 
     it('失敗時のHighlightsResponseを作成できる - NETWORK_ERROR', () => {
