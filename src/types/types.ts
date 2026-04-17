@@ -66,6 +66,22 @@ export interface SupabaseWriterService {
 }
 
 /**
+ * ページ上の保存済みテキスト取得オプション
+ * Requirement 4.1: ページロード時、保存済みテキストを Supabase から取得
+ */
+export interface FetchHighlightsOptions {
+  pageUrl: string;
+}
+
+/**
+ * SupabaseReaderサービスインターフェース
+ * Requirement 4.1, 4.5: 保存済みテキストの取得
+ */
+export interface SupabaseReaderService {
+  fetchSavedTexts(options: FetchHighlightsOptions): Promise<HighlightsResponse>;
+}
+
+/**
  * SettingsManagerサービスインターフェース
  * Requirement 3.1-3.5: 認証情報の管理
  */
@@ -126,7 +142,7 @@ export interface HighlightsResponse {
   success: boolean;
   texts?: string[];  // 保存済みテキストの配列
   error?: {
-    code: 'NO_CREDENTIALS' | 'NETWORK_ERROR' | 'DB_ERROR' | 'UNKNOWN';
+    code: 'NO_CREDENTIALS' | 'AUTH_FAILED' | 'NETWORK_ERROR' | 'DB_ERROR' | 'UNKNOWN';
     message: string;
   };
 }
