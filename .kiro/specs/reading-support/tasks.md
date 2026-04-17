@@ -139,7 +139,7 @@
 
 ## 5. ハイライト機能の型定義
 
-- [ ] 5.1 共有型にハイライト機能の型定義を追加
+- [x] 5.1 共有型にハイライト機能の型定義を追加
   - `GetHighlightsMessage`インターフェース（`type: 'getHighlights'; payload: { pageUrl: string }`）をtypes.tsに追加
   - `HighlightsResponse`インターフェース（`success: boolean; texts?: string[]; error?: { code, message }`）を追加
   - `ExtensionMessage`共用体型に`GetHighlightsMessage`を追加
@@ -149,7 +149,7 @@
 
 ## 6. ハイライト機能コア実装
 
-- [ ] 6.1 (P) SupabaseReaderコンポーネントを実装
+- [x] 6.1 (P) SupabaseReaderコンポーネントを実装
   - `fetchSavedTexts(options: FetchHighlightsOptions): Promise<HighlightsResponse>`メソッドを実装
   - SettingsManagerから認証情報を取得してSupabaseクライアントを初期化
   - `supabase.from('readings').select('selected_text').eq('page_url', pageUrl)`クエリを実装
@@ -160,7 +160,7 @@
   - _Boundary: Service Worker Domain - Supabase統合_
   - _Depends: 5.1_
 
-- [ ] 6.2 (P) HighlightControllerコンポーネントを実装
+- [x] 6.2 (P) HighlightControllerコンポーネントを実装
   - `DOMContentLoaded`後に起動し`isConfigured`メッセージでSettingsManagerの設定状態を確認
   - 認証情報未設定時は処理を即座に中断する（要件4.6）
   - Service Workerへ`getHighlights`メッセージを送信し保存済みテキストリストを取得
@@ -175,7 +175,7 @@
 
 ## 7. ハイライト機能統合
 
-- [ ] 7.1 MessageHandlerにgetHighlightsハンドラを追加
+- [x] 7.1 MessageHandlerにgetHighlightsハンドラを追加
   - `getHighlights`メッセージ受信時にSupabaseReader.fetchSavedTexts()を実行するハンドラを追加
   - 取得結果（`HighlightsResponse`）をContent Scriptに非同期で返却する処理を実装
   - `getHighlights`メッセージがContent ScriptからService Workerを経由してSupabaseへ正常に流れる
@@ -183,7 +183,7 @@
   - _Boundary: Service Worker Domain - メッセージルーティング_
   - _Depends: 6.1_
 
-- [ ] 7.2 HighlightControllerをContent Scriptに統合しService Workerを更新
+- [x] 7.2 HighlightControllerをContent Scriptに統合しService Workerを更新
   - Content ScriptエントリポイントにHighlightControllerのインスタンスを作成・初期化
   - background.tsにSupabaseReaderのインスタンスを追加してService Workerコンポーネントを更新
   - ページロード時にHighlightControllerが起動し保存済みテキストがハイライト表示される完全なフローを確認
