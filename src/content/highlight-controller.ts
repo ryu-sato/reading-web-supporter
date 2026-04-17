@@ -253,7 +253,7 @@ async function initHighlightController(): Promise<void> {
   // 認証情報確認
   const isConfigured = await checkIfConfigured();
   if (!isConfigured) {
-    // 認証情報未設定時は処理を中断
+    console.debug('[ReadingSupport] 認証情報が未設定のため、ハイライト処理をスキップします');
     return;
   }
 
@@ -261,15 +261,18 @@ async function initHighlightController(): Promise<void> {
   injectHighlightStyles();
 
   // 保存済みテキストを取得
-  const response = await getHighlights(window.location.href);
+  const currentUrl = window.location.href;
+  console.debug('[ReadingSupport] ハイライト取得中:', currentUrl);
+  const response = await getHighlights(currentUrl);
 
   if (!response.success) {
-    // 取得失敗時はサイレント中断（ページ表示に影響なし）
+    console.debug('[ReadingSupport] ハイライト取得失敗:', response.error);
     return;
   }
 
   // 取得した各テキストをハイライト
   const texts = response.texts || [];
+  console.debug('[ReadingSupport] 取得したテキスト数:', texts.length, texts);
   if (texts.length > 0) {
     highlightTextsInAnimationFrame(texts);
   }
@@ -320,10 +323,8 @@ export class HighlightController {
   }
 }
 
-// Content Script として実行された場合に自動初期化
-if (typeof document !== 'undefined') {
-  void new HighlightController();
-}
+// 注意: 自動初期化は index.ts（Content Script エントリポイント）で行います。
+// このファイルを直接インポートした場合は、呼び出し側が HighlightController を初期化してください。
 
 export {
   injectHighlightStyles,
