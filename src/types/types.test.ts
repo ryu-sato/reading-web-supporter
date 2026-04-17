@@ -13,6 +13,8 @@ import type {
   StorageState,
   SupabaseWriterService,
   SettingsManagerService,
+  GetHighlightsMessage,
+  HighlightsResponse,
 } from './types';
 
 describe('types/types.ts - 型定義', () => {
@@ -171,6 +173,101 @@ describe('types/types.ts - 型定義', () => {
     it('testConnectionメッセージを作成できる', () => {
       const msg: ExtensionMessage = { type: 'testConnection' };
       expect(msg.type).toBe('testConnection');
+    });
+
+    it('getHighlightsメッセージを作成できる', () => {
+      const msg: ExtensionMessage = {
+        type: 'getHighlights',
+        payload: {
+          pageUrl: 'https://example.com/blog/post',
+        },
+      };
+      expect(msg.type).toBe('getHighlights');
+    });
+  });
+
+  describe('GetHighlightsMessage', () => {
+    it('有効なGetHighlightsMessageを作成できる', () => {
+      const msg: GetHighlightsMessage = {
+        type: 'getHighlights',
+        payload: {
+          pageUrl: 'https://example.com/blog/post',
+        },
+      };
+      expect(msg.type).toBe('getHighlights');
+      expect(msg.payload.pageUrl).toBe('https://example.com/blog/post');
+    });
+  });
+
+  describe('HighlightsResponse', () => {
+    it('成功時のHighlightsResponseを作成できる', () => {
+      const response: HighlightsResponse = {
+        success: true,
+        texts: ['保存済みテキスト1', '保存済みテキスト2', '保存済みテキスト3'],
+      };
+      expect(response.success).toBe(true);
+      expect(response.texts).toHaveLength(3);
+      expect(response.texts?.[0]).toBe('保存済みテキスト1');
+      expect(response.error).toBeUndefined();
+    });
+
+    it('成功時（0件）のHighlightsResponseを作成できる', () => {
+      const response: HighlightsResponse = {
+        success: true,
+        texts: [],
+      };
+      expect(response.success).toBe(true);
+      expect(response.texts).toHaveLength(0);
+      expect(response.error).toBeUndefined();
+    });
+
+    it('失敗時のHighlightsResponseを作成できる - NO_CREDENTIALS', () => {
+      const response: HighlightsResponse = {
+        success: false,
+        error: {
+          code: 'NO_CREDENTIALS',
+          message: '認証情報が未設定です',
+        },
+      };
+      expect(response.success).toBe(false);
+      expect(response.error?.code).toBe('NO_CREDENTIALS');
+      expect(response.texts).toBeUndefined();
+    });
+
+    it('失敗時のHighlightsResponseを作成できる - NETWORK_ERROR', () => {
+      const response: HighlightsResponse = {
+        success: false,
+        error: {
+          code: 'NETWORK_ERROR',
+          message: 'ネットワークエラー',
+        },
+      };
+      expect(response.success).toBe(false);
+      expect(response.error?.code).toBe('NETWORK_ERROR');
+    });
+
+    it('失敗時のHighlightsResponseを作成できる - DB_ERROR', () => {
+      const response: HighlightsResponse = {
+        success: false,
+        error: {
+          code: 'DB_ERROR',
+          message: 'DBエラー',
+        },
+      };
+      expect(response.success).toBe(false);
+      expect(response.error?.code).toBe('DB_ERROR');
+    });
+
+    it('失敗時のHighlightsResponseを作成できる - UNKNOWN', () => {
+      const response: HighlightsResponse = {
+        success: false,
+        error: {
+          code: 'UNKNOWN',
+          message: '不明なエラー',
+        },
+      };
+      expect(response.success).toBe(false);
+      expect(response.error?.code).toBe('UNKNOWN');
     });
   });
 

@@ -108,6 +108,30 @@ export interface OnClickedInfo {
 }
 
 /**
+ * ページ上の保存済みテキスト取得リクエスト
+ * Requirement 4.1: ページロード時、保存済みテキストを Supabase から取得
+ */
+export interface GetHighlightsMessage {
+  type: 'getHighlights';
+  payload: {
+    pageUrl: string;  // window.location.href
+  };
+}
+
+/**
+ * 保存済みテキスト取得の結果
+ * Requirement 4.1, 4.2: 保存済みテキストのリストを返す
+ */
+export interface HighlightsResponse {
+  success: boolean;
+  texts?: string[];  // 保存済みテキストの配列
+  error?: {
+    code: 'NO_CREDENTIALS' | 'NETWORK_ERROR' | 'DB_ERROR' | 'UNKNOWN';
+    message: string;
+  };
+}
+
+/**
  * Chrome Runtime メッセージの共用体型
  */
 export type ExtensionMessage =
@@ -116,4 +140,5 @@ export type ExtensionMessage =
   | { type: 'saveSelection'; payload: SaveTextOptions }
   | { type: 'getCredentials' }
   | { type: 'setCredentials'; payload: SupabaseCredentials }
-  | { type: 'testConnection' };
+  | { type: 'testConnection' }
+  | GetHighlightsMessage;
