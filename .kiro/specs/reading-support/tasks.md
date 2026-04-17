@@ -210,7 +210,7 @@
 
 ## 9. メモ機能の型定義更新
 
-- [ ] 9.1 共有型定義をメモ機能に対応するよう更新
+- [x] 9.1 共有型定義をメモ機能に対応するよう更新
   - `SavedHighlight` インターフェース（`{ text: string; memo?: string }`）を types.ts に追加
   - `HighlightsResponse` の `texts?: string[]` を `highlights?: SavedHighlight[]` に変更（ブレイキングチェンジ）
   - `SaveTextOptions` に `memo?: string` フィールドを追加

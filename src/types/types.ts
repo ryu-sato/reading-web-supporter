@@ -32,11 +32,13 @@ export interface SupabaseCredentials {
 /**
  * Supabaseへの保存オプション
  * Requirement 2.1: 選択テキスト・ページURL・記録日時をSupabaseの指定テーブルへ書き込む
+ * Requirement 5.1: メモテキストを任意で付加できる
  */
 export interface SaveTextOptions {
   selectedText: string;
   pageUrl: string;
   timestamp: ISO8601;  // e.g., new Date().toISOString()
+  memo?: string;       // ハイライトに付随するメモ（任意）
 }
 
 /**
@@ -135,15 +137,37 @@ export interface GetHighlightsMessage {
 }
 
 /**
+ * 保存済みハイライト（テキストとオプションのメモを含む）
+ * Requirement 5.3, 5.4: メモ付きでハイライトを保存・取得する
+ */
+export interface SavedHighlight {
+  text: string;   // ハイライトされたテキスト
+  memo?: string;  // ハイライトに付随するメモ（任意）
+}
+
+/**
  * 保存済みテキスト取得の結果
  * Requirement 4.1, 4.2: 保存済みテキストのリストを返す
+ * Requirement 5.3: メモ情報を含めてハイライトを返す
  */
 export interface HighlightsResponse {
   success: boolean;
-  texts?: string[];  // 保存済みテキストの配列
+  highlights?: SavedHighlight[];  // 保存済みハイライトの配列（テキストとメモ）
   error?: {
     code: 'NO_CREDENTIALS' | 'AUTH_FAILED' | 'NETWORK_ERROR' | 'DB_ERROR' | 'UNKNOWN';
     message: string;
+  };
+}
+
+/**
+ * メモ入力 UI を表示するメッセージ
+ * Requirement 5.1: テキスト選択後、メモ入力UIを表示する
+ */
+export interface ShowMemoInputMessage {
+  type: 'showMemoInput';
+  payload: {
+    selectedText: string;  // ユーザーが選択したテキスト
+    pageUrl: string;       // 現在のページ URL
   };
 }
 
@@ -158,4 +182,5 @@ export type ExtensionMessage =
   | { type: 'setCredentials'; payload: SupabaseCredentials }
   | { type: 'testConnection' }
   | { type: 'isConfigured' }
-  | GetHighlightsMessage;
+  | GetHighlightsMessage
+  | ShowMemoInputMessage;

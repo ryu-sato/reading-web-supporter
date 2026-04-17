@@ -225,16 +225,16 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
 
   describe('getHighlights - 保存済みテキスト取得', () => {
     it('保存済みテキストを正常に取得する', async () => {
-      const texts = ['重要な文章1', '重要な文章2'];
+      const highlights = [{ text: '重要な文章1' }, { text: '重要な文章2' }];
       mockSendMessage.mockResolvedValue({
         success: true,
-        texts,
+        highlights,
       } as HighlightsResponse);
 
       const result = await getHighlights('https://example.com');
 
       expect(result.success).toBe(true);
-      expect(result.texts).toEqual(texts);
+      expect(result.highlights).toEqual(highlights);
       expect(mockSendMessage).toHaveBeenCalledWith({
         type: 'getHighlights',
         payload: { pageUrl: 'https://example.com' },
@@ -244,13 +244,13 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
     it('空配列を返す場合、success: true で処理する', async () => {
       mockSendMessage.mockResolvedValue({
         success: true,
-        texts: [],
+        highlights: [],
       } as HighlightsResponse);
 
       const result = await getHighlights('https://example.com');
 
       expect(result.success).toBe(true);
-      expect(result.texts).toEqual([]);
+      expect(result.highlights).toEqual([]);
     });
 
     it('エラーレスポンスを返す場合、success: false で処理する', async () => {
@@ -280,7 +280,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
     it('現在のページ URL を正しく送信する', async () => {
       mockSendMessage.mockResolvedValue({
         success: true,
-        texts: [],
+        highlights: [],
       } as HighlightsResponse);
 
       await getHighlights('https://example.com/specific-page');
@@ -367,7 +367,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
         .mockResolvedValueOnce({
           // getHighlights
           success: true,
-          texts: ['重要な文章'],
+          highlights: [{ text: '重要な文章' }],
         } as HighlightsResponse);
 
       const p = document.createElement('p');

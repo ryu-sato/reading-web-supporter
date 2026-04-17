@@ -72,8 +72,8 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.texts).toBeDefined();
-      expect(result.texts).toHaveLength(2);
+      expect(result.highlights).toBeDefined();
+      expect(result.highlights).toHaveLength(2);
       expect(result.error).toBeUndefined();
     });
 
@@ -87,13 +87,13 @@ describe('SupabaseReader', () => {
       expect(mockEq).toHaveBeenCalledWith('page_url', mockFetchOptions.pageUrl);
     });
 
-    it('取得成功時に success: true と texts 配列を返す (Req 4.1)', async () => {
+    it('取得成功時に success: true と highlights 配列を返す (Req 4.1)', async () => {
       const resultPromise = reader.fetchSavedTexts(mockFetchOptions);
       jest.runAllTimersAsync();
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.texts).toEqual(['テスト選択テキスト1', 'テスト選択テキスト2']);
+      expect(result.highlights).toEqual([{ text: 'テスト選択テキスト1' }, { text: 'テスト選択テキスト2' }]);
     });
 
     it('保存済みテキストが0件の場合、空配列を返す (Req 4.1)', async () => {
@@ -107,7 +107,7 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.texts).toEqual([]);
+      expect(result.highlights).toEqual([]);
     });
 
     it('data が null の場合、空配列を返す', async () => {
@@ -121,7 +121,7 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.texts).toEqual([]);
+      expect(result.highlights).toEqual([]);
     });
   });
 
@@ -309,8 +309,8 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.texts).toHaveLength(3);
-      expect(result.texts).toEqual(['テキスト1', 'テキスト2', 'テキスト3']);
+      expect(result.highlights).toHaveLength(3);
+      expect(result.highlights).toEqual([{ text: 'テキスト1' }, { text: 'テキスト2' }, { text: 'テキスト3' }]);
     });
 
     it('長いテキストと短いテキストを混在して返す', async () => {
@@ -328,7 +328,7 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.texts).toHaveLength(3);
+      expect(result.highlights).toHaveLength(3);
     });
   });
 

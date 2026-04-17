@@ -128,11 +128,12 @@ export class SupabaseReader implements SupabaseReaderService {
         };
       }
 
-      // 成功: data を texts 配列に変換
-      const texts = data && Array.isArray(data) ? data.map((row) => row.selected_text) : [];
+      // 成功: data を highlights 配列に変換
+      // TODO: update in task 10.5 to include memo field from DB
+      const highlights = data && Array.isArray(data) ? data.map((row) => ({ text: row.selected_text })) : [];
       return {
         success: true,
-        texts,
+        highlights,
       };
     } catch (err) {
       // ネットワーク障害またはタイムアウト

@@ -266,8 +266,10 @@ async function initHighlightController(): Promise<void> {
     return;
   }
 
-  // 取得した各テキストをハイライト
-  const texts = response.texts || [];
+  // 取得した各ハイライトのテキストを抽出してハイライト表示
+  // TODO: update in task 10.4 to handle memo display
+  const highlights = response.highlights || [];
+  const texts = highlights.map((h) => h.text);
   console.log('[ReadingSupport] 取得したテキスト数:', texts.length, texts);
   if (texts.length > 0) {
     console.log('[ReadingSupport] ハイライト対象テキスト:', JSON.stringify(texts));
