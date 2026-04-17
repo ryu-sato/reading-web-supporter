@@ -208,6 +208,110 @@
   - Supabase取得失敗シナリオ → ページ表示が正常であることをテスト
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
+## 9. メモ機能の型定義更新
+
+- [ ] 9.1 共有型定義をメモ機能に対応するよう更新
+  - `SavedHighlight` インターフェース（`{ text: string; memo?: string }`）を types.ts に追加
+  - `HighlightsResponse` の `texts?: string[]` を `highlights?: SavedHighlight[]` に変更（ブレイキングチェンジ）
+  - `SaveTextOptions` に `memo?: string` フィールドを追加
+  - `ExtensionMessage` 共用体型に `ShowMemoInputMessage`（`{ type: 'showMemoInput'; payload: { selectedText: string; pageUrl: string } }`）を追加
+  - 全コンポーネントが新型定義をインポートしてビルドエラーなしでコンパイル可能
+  - **注**: 既存ユーザーは Supabase テーブルに `ALTER TABLE readings ADD COLUMN memo TEXT;` の実行が必要
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+  - _Boundary: 共有型定義_
+
+## 10. メモ機能コア実装
+
+- [ ] 10.1 (P) MemoInputUI コンポーネントを新規実装
+  - `showMemoInput` メッセージを受信して Shadow DOM ベースのメモ入力オーバーレイを表示する
+  - 選択テキストのプレビューと `<textarea>` によるメモ入力フィールド・Save/Cancel ボタンを含む UI を実装
+  - Save 押下時に `saveSelection`（selectedText, pageUrl, memo）メッセージを Service Worker へ送信
+  - Cancel 押下時または背景クリック時はダイアログを閉じ保存処理を実行しない（5.3）
+  - メモ空欄のまま Save しても `saveSelection` が送信され保存処理が続行される（5.3）
+  - `<style>` を Shadow DOM 内に注入してページのグローバル CSS の影響を排除
+  - メモ入力ダイアログが表示され Save/Cancel 操作が正常に動作する
+  - _Requirements: 5.1, 5.2, 5.3_
+  - _Boundary: Content Script Domain_
+  - _Depends: 9.1_
+
+- [ ] 10.2 (P) ContextMenuHandler をメモ入力フロー対応に更新
+  - `onClicked` ハンドラで `SupabaseWriter.save()` を直接呼ぶ代わりに `chrome.tabs.sendMessage(tab.id, { type: 'showMemoInput', payload: { selectedText, pageUrl } })` を送信するよう変更
+  - コンテキストメニュークリック時に MemoInputUI が起動しメモ入力ダイアログが表示されることを確認
+  - SupabaseWriter の直接呼び出しが ContextMenuHandler から除去されている
+  - _Requirements: 5.1_
+  - _Boundary: Service Worker Domain - コンテキストメニュー統合_
+  - _Depends: 9.1_
+
+- [ ] 10.3 (P) SupabaseWriter と MessageHandler をメモ対応に更新
+  - `SupabaseWriter.save()` の INSERT 文に `memo` フィールドを追加（undefined の場合は NULL として挿入）
+  - MessageHandler の `saveSelection` ハンドラで `memo` フィールドを `SupabaseWriter.save()` に渡すよう更新
+  - memo ありの INSERT でレコードに `memo` カラムの値が格納されること、memo なし（undefined）で NULL が格納されることを確認
+  - _Requirements: 5.2, 5.3_
+  - _Boundary: Service Worker Domain - Supabase統合, メッセージルーティング_
+  - _Depends: 9.1_
+
+- [ ] 10.4 (P) SupabaseReader をメモ取得対応に更新
+  - `fetchSavedTexts` クエリを `select('selected_text, memo')` に変更して `memo` カラムも取得する
+  - 戻り値の型を `string[]` から `SavedHighlight[]`（`{ text: string; memo?: string }`）に変更
+  - `memo` が NULL のレコードは `memo: undefined` として返却する
+  - SELECT 操作が `SavedHighlight[]`（text と memo を含む）を正常に返却する
+  - _Requirements: 5.4_
+  - _Boundary: Service Worker Domain - Supabase統合_
+  - _Depends: 9.1_
+
+- [ ] 10.5 (P) HighlightController にツールチップ表示を追加
+  - `HighlightsResponse.highlights` (`SavedHighlight[]`) を受け取るよう更新（`texts?: string[]` から変更）
+  - `<mark>` 要素のラップ時に `memo` が存在する場合 `data-memo` 属性を設定する（5.4）
+  - ページに1つのツールチップ要素（`<div class="reading-support-tooltip">`）を保持し mouseover/mouseout イベントで表示/非表示を切り替える
+  - `memo` が undefined/null/空文字の場合はツールチップを表示しない（5.5）
+  - `<mark>` 要素へのホバー時に `data-memo` を持つ要素ではツールチップが表示され、持たない要素では表示されない
+  - _Requirements: 5.4, 5.5_
+  - _Boundary: Content Script Domain_
+  - _Depends: 9.1_
+
+## 11. メモ機能統合
+
+- [ ] 11.1 保存フロー全体を接続して動作確認
+  - Content Script エントリポイントに `MemoInputUI` のインスタンスを作成・初期化
+  - 完全なフローを確認：コンテキストメニュークリック → `showMemoInput` → MemoInputUI ダイアログ表示 → Save → `saveSelection`（memo含む） → MessageHandler → SupabaseWriter → Supabase INSERT
+  - memo を入力して保存 → Supabase レコードに memo 値が格納されることを確認
+  - memo 未入力で保存 → Supabase レコードの memo カラムが NULL であることを確認
+  - _Requirements: 5.1, 5.2, 5.3_
+  - _Depends: 10.1, 10.2, 10.3_
+
+- [ ] 11.2 ハイライト＋ツールチップフローを接続して動作確認
+  - MessageHandler の `getHighlights` レスポンスが `SavedHighlight[]` を返すことを確認（SupabaseReader 変更の伝播）
+  - HighlightController が `highlights` フィールドを正しく読み取ることを確認
+  - memo ありのレコードを保存済みのページを開き `<mark>` 要素へのホバーでツールチップが表示されることを確認
+  - memo なしのレコードのハイライトではホバーしてもツールチップが表示されないことを確認
+  - _Requirements: 5.4, 5.5_
+  - _Depends: 10.4, 10.5_
+
+## 12. メモ機能検証
+
+- [ ]* 12.1 メモ機能のユニットテスト
+  - MemoInputUI: `showMemoInput` 受信でオーバーレイが DOM に挿入されることをテスト
+  - MemoInputUI: Save 押下で `saveSelection`（memo含む）が送信されることをテスト
+  - MemoInputUI: memo 空でも Save 可能（`memo: undefined`で送信）をテスト（5.3）
+  - MemoInputUI: Cancel 押下で `saveSelection` が送信されないことをテスト
+  - HighlightController: memo ありの `SavedHighlight` で `<mark>` に `data-memo` 属性が設定されることをテスト（5.4）
+  - HighlightController: mouseover 時にツールチップが表示され mouseout で非表示になることをテスト（5.4）
+  - HighlightController: memo なし（undefined/null/空文字）でツールチップが表示されないことをテスト（5.5）
+  - SupabaseWriter: memo ありの INSERT で memo カラムに値が入ることをテスト
+  - SupabaseWriter: memo なし（undefined）の INSERT で memo カラムが NULL になることをテスト
+  - SupabaseReader: `selected_text` と `memo` を含む `SavedHighlight[]` が返却されることをテスト
+  - ContextMenuHandler: onClicked で `showMemoInput` メッセージが送信され SupabaseWriter が直接呼ばれないことをテスト
+  - すべてのコンポーネントが外部依存関係のモッキングで分離されたユニットテストに合格
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+
+- [ ]* 12.2 メモ機能のエンドツーエンドテスト
+  - テキスト選択 → メモ入力ダイアログ表示 → memo 入力して Save → Supabase に memo 付きレコードが INSERT されることを確認
+  - テキスト選択 → memo 未入力で Save → Supabase に memo = NULL のレコードが INSERT されることを確認
+  - memo ありの保存済みテキストを含むページを開く → ハイライト表示 → ホバーでツールチップ表示
+  - memo なしの保存済みテキストを含むページを開く → ハイライト表示 → ホバーでツールチップ非表示
+  - Cancel 押下後 → 保存されず Supabase にレコードが追加されていないことを確認
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+
 ## 実装メモ
 
 - 基盤タスクはTypeScriptビルド環境とChrome拡張機能構造を確立
@@ -216,5 +320,7 @@
 - (P)マークのタスクは主要タスクグループ内で並行実行可能
 - *マークのタスクはMVP後に延期可能なオプションのテストカバレッジ
 - タスク1〜4はRequirement 1-3（テキスト選択・保存・認証情報管理）をカバーし完了済み
-- タスク5〜8はRequirement 4（保存済みテキストのハイライト表示）の新規実装
-- ハイライト機能はSupabaseのanon roleにSELECTポリシーが必要（ユーザーがRLSポリシーを更新する必要あり）
+- タスク5〜8はRequirement 4（保存済みテキストのハイライト表示）の新規実装が完了済み
+- タスク9〜12はRequirement 5（選択テキストへのメモ追加）の新規実装
+- メモ機能追加により Supabase の `readings` テーブルに `memo TEXT` カラムが必要（既存ユーザーは `ALTER TABLE readings ADD COLUMN memo TEXT;` を実行）
+- タスク9.1 の型変更（`HighlightsResponse.texts` → `highlights`）はブレイキングチェンジ。タスク10.4 と 10.5 が同時に更新されるため並列実装時は同一PR/ブランチで対応
