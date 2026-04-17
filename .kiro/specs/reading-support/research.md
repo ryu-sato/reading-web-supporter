@@ -116,6 +116,27 @@ const { data, error } = await supabase
 
 ---
 
+## Design Synthesis (Requirement 5 追加: メモ機能)
+
+### Architecture Decision: MemoInputUI を Content Script に配置
+- メモ入力ダイアログはDOM操作（オーバーレイ表示）が必要なため Content Script に追加
+- ContextMenuHandler（SW）→ `chrome.tabs.sendMessage` → MemoInputUI（CS）→ `saveSelection` → MessageHandler（SW）の2段階フローを採用
+- これにより認証情報は引き続き SW のみが保持し、CS に漏洩しない
+
+### Interface Break: HighlightsResponse の変更
+- `texts?: string[]` → `highlights?: SavedHighlight[]`（`{ text: string; memo?: string }`）
+- SupabaseReader と HighlightController 間の共有型変更。両コンポーネントの同期更新が必要
+- Revalidation Triggers に `SavedHighlight` 型変更を追記
+
+### Data Model: memo カラム追加
+- `memo TEXT NULL` — 任意フィールドとして NULL 許容
+- 既存ユーザーは `ALTER TABLE readings ADD COLUMN memo TEXT;` が必要
+- 設計ドキュメントにマイグレーション手順を明記
+
+### XSS 対策: memo のレンダリング
+- ツールチップ表示は `element.textContent` のみ使用（innerHTML 不使用）
+- `data-memo` 属性は `setAttribute` で設定
+
 ## Design Synthesis (Requirement 4 追加)
 
 ### Generalization
