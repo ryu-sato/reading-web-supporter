@@ -9,8 +9,8 @@ module.exports = {
 
   // 分離されたエントリポイント: Content Script と Service Worker を個別にバンドル
   entry: {
-    // Content Script: ページに注入されてテキスト選択を検知
-    'content/text-selector': './src/content/text-selector.ts',
+    // Content Script: ページに注入されてテキスト選択を検知・ハイライト表示（タスク7.2: index.ts で TextSelector と HighlightController を統合）
+    'content/index': './src/content/index.ts',
     // Service Worker: バックグラウンドで動作する拡張機能のメインプロセス
     'service-worker/background': './src/service-worker/background.ts',
     // Options Page: 設定画面のスクリプト

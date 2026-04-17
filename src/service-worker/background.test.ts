@@ -86,12 +86,13 @@ const mockOnSelectionChange = jest.fn((cb: (hasSelection: boolean) => void) => {
   capturedSelectionChangeCallback = cb;
 });
 const mockMessageHandlerConstructor = jest.fn().mockImplementation(
-  (_settingsManager?: unknown, _supabaseWriter?: unknown) => ({
+  (_settingsManager?: unknown, _supabaseWriter?: unknown, _supabaseReader?: unknown) => ({
     onSelectionChange: mockOnSelectionChange,
   })
 );
 const mockSettingsManagerConstructor = jest.fn().mockImplementation(() => ({}));
 const mockSupabaseWriterConstructor = jest.fn().mockImplementation(() => ({}));
+const mockSupabaseReaderConstructor = jest.fn().mockImplementation(() => ({}));
 
 jest.mock('./context-menu-handler', () => ({
   ContextMenuHandler: mockContextMenuHandlerConstructor,
@@ -107,6 +108,10 @@ jest.mock('./settings-manager', () => ({
 
 jest.mock('./supabase-writer', () => ({
   SupabaseWriter: mockSupabaseWriterConstructor,
+}));
+
+jest.mock('./supabase-reader', () => ({
+  SupabaseReader: mockSupabaseReaderConstructor,
 }));
 
 // ── テストスイート ──────────────────────────────────────────────────────────────
@@ -135,6 +140,9 @@ describe('background.ts - Service Worker オーケストレーション', () => 
     }));
     jest.mock('./supabase-writer', () => ({
       SupabaseWriter: mockSupabaseWriterConstructor,
+    }));
+    jest.mock('./supabase-reader', () => ({
+      SupabaseReader: mockSupabaseReaderConstructor,
     }));
 
     // background.ts を import してモジュールレベルの初期化を実行
@@ -165,6 +173,18 @@ describe('background.ts - Service Worker オーケストレーション', () => 
 
     it('SupabaseWriter がインスタンス化される', () => {
       expect(mockSupabaseWriterConstructor).toHaveBeenCalledTimes(1);
+    });
+
+    it('SupabaseReader がインスタンス化される', () => {
+      expect(mockSupabaseReaderConstructor).toHaveBeenCalledTimes(1);
+    });
+
+    it('MessageHandler に SettingsManager、SupabaseWriter、SupabaseReader が注入される (Task 7.2)', () => {
+      // MessageHandler のコンストラクターが settingsManager、supabaseWriter、supabaseReader を受け取る
+      const [firstArg, secondArg, thirdArg] = mockMessageHandlerConstructor.mock.calls[0] as unknown[];
+      expect(firstArg).toBeDefined(); // settingsManager
+      expect(secondArg).toBeDefined(); // supabaseWriter
+      expect(thirdArg).toBeDefined(); // supabaseReader
     });
   });
 

@@ -18,6 +18,7 @@ import { ContextMenuHandler } from './context-menu-handler';
 import { MessageHandler } from './message-handler';
 import { SettingsManager } from './settings-manager';
 import { SupabaseWriter } from './supabase-writer';
+import { SupabaseReader } from './supabase-reader';
 
 // ── コンポーネント初期化（モジュールレベル） ──────────────────────────────────────
 // Manifest V3 では service worker がイベントごとにアクティベートされるため、
@@ -29,11 +30,15 @@ const settingsManager = new SettingsManager();
 /** SupabaseWriter: Supabase への INSERT 操作 */
 const supabaseWriter = new SupabaseWriter();
 
+/** SupabaseReader: Supabase からの SELECT 操作 */
+const supabaseReader = new SupabaseReader();
+
 /**
  * MessageHandler: Content Script ↔ Service Worker 間のメッセージルーティング
  * Task 3.3: settingsManager と supabaseWriter を注入して Options Page メッセージを処理できるようにする
+ * Task 7.2: supabaseReader を注入して HighlightController の getHighlights メッセージを処理できるようにする
  */
-const messageHandler = new MessageHandler(settingsManager, supabaseWriter);
+const messageHandler = new MessageHandler(settingsManager, supabaseWriter, supabaseReader);
 
 /** ContextMenuHandler: Chrome コンテキストメニュー統合 */
 const contextMenuHandler = new ContextMenuHandler();
@@ -69,4 +74,4 @@ messageHandler.onSelectionChange((hasSelection: boolean) => {
 
 // タスク 3.3 でオプションページと設定管理の配線が完成する。
 // export によりコンポーネントは将来の配線で参照可能になる。
-export { contextMenuHandler, messageHandler, settingsManager, supabaseWriter };
+export { contextMenuHandler, messageHandler, settingsManager, supabaseWriter, supabaseReader };

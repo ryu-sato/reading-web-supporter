@@ -523,13 +523,14 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
 
     it('スクリプトやスタイルタグ内のテキストは無視される（TreeWalker の SHOW_TEXT で自動的に）', () => {
       const script = document.createElement('script');
-      script.textContent = '重要な文章';
+      // Valid JavaScript that won't throw when executed
+      script.textContent = '// Important text is here';
       const p = document.createElement('p');
-      p.textContent = '重要な文章';
+      p.textContent = 'Important text';
       document.body.appendChild(script);
       document.body.appendChild(p);
 
-      const result = highlightText('重要な文章');
+      const result = highlightText('Important text');
 
       // p タグのテキストのみ検索対象（script は TreeWalker で検索されない）
       expect(result).toBe(true);
@@ -538,6 +539,8 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
     });
 
     it('大文字小文字の区別を正しく行う', () => {
+      // Test case 1: Case-sensitive match
+      document.body.innerHTML = '';
       const p = document.createElement('p');
       p.textContent = 'Important Text';
       document.body.appendChild(p);
@@ -545,13 +548,15 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       const result1 = highlightText('Important Text');
       expect(result1).toBe(true);
 
-      // 大文字小文字が異なる場合は見つからない
+      // Test case 2: Case-sensitive non-match - reset DOM and try different case
+      document.body.innerHTML = '';
       const p2 = document.createElement('p');
-      p2.textContent = 'important text';
+      p2.textContent = 'Important Text';
       document.body.appendChild(p2);
 
-      const result2 = highlightText('Important Text');
-      expect(result2).toBe(true); // p2 では見つからないが、p では見つかるため true
+      // Search with different case should not find it
+      const result2 = highlightText('important text');
+      expect(result2).toBe(false);
     });
   });
 });

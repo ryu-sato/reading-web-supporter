@@ -14,8 +14,8 @@ const DIST = path.join(ROOT, 'dist');
 
 describe('dist/ ビルド出力検証', () => {
   describe('必須バンドルファイルの存在確認', () => {
-    test('content script バンドル (dist/content/text-selector.js) が存在する', () => {
-      expect(fs.existsSync(path.join(DIST, 'content', 'text-selector.js'))).toBe(true);
+    test('content script バンドル (dist/content/index.js) が存在する (Task 7.2)', () => {
+      expect(fs.existsSync(path.join(DIST, 'content', 'index.js'))).toBe(true);
     });
 
     test('service worker バンドル (dist/service-worker/background.js) が存在する', () => {
@@ -70,8 +70,8 @@ describe('dist/ ビルド出力検証', () => {
   });
 
   describe('ソースマップの生成確認', () => {
-    test('content script のソースマップ (dist/content/text-selector.js.map) が存在する', () => {
-      expect(fs.existsSync(path.join(DIST, 'content', 'text-selector.js.map'))).toBe(true);
+    test('content script のソースマップ (dist/content/index.js.map) が存在する (Task 7.2)', () => {
+      expect(fs.existsSync(path.join(DIST, 'content', 'index.js.map'))).toBe(true);
     });
 
     test('service worker のソースマップ (dist/service-worker/background.js.map) が存在する', () => {
@@ -82,9 +82,9 @@ describe('dist/ ビルド出力検証', () => {
       expect(fs.existsSync(path.join(DIST, 'options', 'options.js.map'))).toBe(true);
     });
 
-    test('content script の JS に sourceMappingURL コメントが含まれる', () => {
+    test('content script の JS に sourceMappingURL コメントが含まれる (Task 7.2)', () => {
       const content = fs.readFileSync(
-        path.join(DIST, 'content', 'text-selector.js'),
+        path.join(DIST, 'content', 'index.js'),
         'utf-8'
       );
       expect(content).toMatch(/\/\/# sourceMappingURL=/);
