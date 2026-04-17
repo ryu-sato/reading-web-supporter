@@ -71,94 +71,90 @@ function injectHighlightStyles(): void {
  * @returns ハイライトが適用されたかどうか
  */
 function highlightText(text: string): boolean {
-  if (!text || !document.body) {
-    return false;
-  }
+  if (!text || !document.body) return false;
 
-  // TreeWalker フィルタ：mark.reading-support-highlight を除外
-  const filter = {
+  // テキストノードを収集（script/style/ハイライト済みを除外）
+  const textNodes: Text[] = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode: (node: Node): number => {
-      // 親が mark.reading-support-highlight の場合はスキップ
-      let parent = node.parentNode;
-      while (parent) {
-        if (
-          parent.nodeType === Node.ELEMENT_NODE &&
-          (parent as Element).classList?.contains('reading-support-highlight')
-        ) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        parent = parent.parentNode;
-      }
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      const tag = parent.tagName;
+      if (['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(tag)) return NodeFilter.FILTER_REJECT;
+      if (parent.classList?.contains('reading-support-highlight')) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
-  };
+  });
 
-  const walker = document.createTreeWalker(
-    document.body,
-    NodeFilter.SHOW_TEXT,
-    filter
-  );
-
-  // 最初にすべての候補ノードを収集（DOM修正中のTreeWalkerの不安定さを回避）
-  const nodesToProcess: Array<{
-    node: Text;
-    index: number;
-    nodeText: string;
-  }> = [];
-
-  let currentNode = walker.nextNode();
-  while (currentNode) {
-    const nodeText = currentNode.textContent || '';
-    const index = nodeText.indexOf(text);
-
-    if (index !== -1 && currentNode.nodeType === Node.TEXT_NODE) {
-      nodesToProcess.push({
-        node: currentNode as Text,
-        index,
-        nodeText,
-      });
-    }
-
-    currentNode = walker.nextNode();
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node as Text);
   }
 
+  // 全ノードのテキストを結合して連続文字列を作成し、各ノードの開始位置を記録
+  let combined = '';
+  const nodeMap: Array<{ node: Text; start: number }> = [];
+  for (const n of textNodes) {
+    nodeMap.push({ node: n, start: combined.length });
+    combined += n.textContent || '';
+  }
+
+  console.log('[ReadingSupport] 結合テキスト内でのマッチ確認:', combined.includes(text));
+
   let highlighted = false;
+  let searchFrom = 0;
+  let matchStart: number;
 
-  // 次に、収集したノードを処理
-  for (const { node: textNode, index, nodeText } of nodesToProcess) {
-    // テキストの開始より前のテキスト
-    const beforeText = nodeText.substring(0, index);
-    // ハイライト対象のテキスト
-    const highlightedText = nodeText.substring(index, index + text.length);
-    // テキストの終了より後のテキスト
-    const afterText = nodeText.substring(index + text.length);
+  while ((matchStart = combined.indexOf(text, searchFrom)) !== -1) {
+    const matchEnd = matchStart + text.length;
 
-    // 親を取得（変更前）
-    const parent = textNode.parentNode;
-    const nextSibling = textNode.nextSibling;
+    // マッチ範囲の開始・終了ノードとオフセットを特定
+    let startNode: Text | null = null;
+    let startOffset = 0;
+    let endNode: Text | null = null;
+    let endOffset = 0;
 
-    if (parent) {
-      // 元のテキストノードを削除
-      parent.removeChild(textNode);
+    for (let i = 0; i < nodeMap.length; i++) {
+      const { node: n, start } = nodeMap[i];
+      const nodeLen = n.textContent?.length || 0;
+      const end = start + nodeLen;
 
-      // beforeText がある場合、テキストノードを追加
-      if (beforeText) {
-        parent.insertBefore(document.createTextNode(beforeText), nextSibling);
+      if (startNode === null && matchStart >= start && matchStart < end) {
+        startNode = n;
+        startOffset = matchStart - start;
       }
-
-      // mark 要素を作成してハイライト表示
-      const mark = document.createElement('mark');
-      mark.className = 'reading-support-highlight';
-      mark.textContent = highlightedText;
-      parent.insertBefore(mark, nextSibling || null);
-
-      // afterText がある場合、テキストノードを追加
-      if (afterText) {
-        parent.insertBefore(document.createTextNode(afterText), nextSibling || null);
+      if (startNode !== null && endNode === null && matchEnd <= end) {
+        endNode = n;
+        endOffset = matchEnd - start;
+        break;
       }
-
-      highlighted = true;
     }
+
+    if (startNode && endNode) {
+      try {
+        const range = document.createRange();
+        range.setStart(startNode, startOffset);
+        range.setEnd(endNode, endOffset);
+
+        const mark = document.createElement('mark');
+        mark.className = 'reading-support-highlight';
+
+        // 複数ノードをまたがる場合は surroundContents が失敗するため extractContents を使用
+        try {
+          range.surroundContents(mark);
+        } catch {
+          const fragment = range.extractContents();
+          mark.appendChild(fragment);
+          range.insertNode(mark);
+        }
+
+        highlighted = true;
+      } catch (_e) {
+        // DOM 操作失敗はスキップして次のテキストへ
+      }
+    }
+
+    searchFrom = matchEnd;
   }
 
   return highlighted;
@@ -253,7 +249,7 @@ async function initHighlightController(): Promise<void> {
   // 認証情報確認
   const isConfigured = await checkIfConfigured();
   if (!isConfigured) {
-    console.debug('[ReadingSupport] 認証情報が未設定のため、ハイライト処理をスキップします');
+    console.log('[ReadingSupport] 認証情報が未設定のため、ハイライト処理をスキップします');
     return;
   }
 
@@ -262,18 +258,19 @@ async function initHighlightController(): Promise<void> {
 
   // 保存済みテキストを取得
   const currentUrl = window.location.href;
-  console.debug('[ReadingSupport] ハイライト取得中:', currentUrl);
+  console.log('[ReadingSupport] ハイライト取得中:', currentUrl);
   const response = await getHighlights(currentUrl);
 
   if (!response.success) {
-    console.debug('[ReadingSupport] ハイライト取得失敗:', response.error);
+    console.log('[ReadingSupport] ハイライト取得失敗:', response.error);
     return;
   }
 
   // 取得した各テキストをハイライト
   const texts = response.texts || [];
-  console.debug('[ReadingSupport] 取得したテキスト数:', texts.length, texts);
+  console.log('[ReadingSupport] 取得したテキスト数:', texts.length, texts);
   if (texts.length > 0) {
+    console.log('[ReadingSupport] ハイライト対象テキスト:', JSON.stringify(texts));
     highlightTextsInAnimationFrame(texts);
   }
 }
