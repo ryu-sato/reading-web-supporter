@@ -97,11 +97,9 @@ function setupTooltipEvents(): void {
 
   document.addEventListener('mouseover', (event: MouseEvent) => {
     const target = event.target as HTMLElement;
-    if (
-      target.tagName === 'MARK' &&
-      target.classList.contains('reading-support-highlight')
-    ) {
-      const memo = target.getAttribute('data-memo');
+    const mark = target.closest?.('mark.reading-support-highlight') as HTMLElement | null;
+    if (mark) {
+      const memo = mark.getAttribute('data-memo');
       if (memo && memo.length > 0) {
         tooltip.textContent = memo;
         tooltip.style.top = (event.clientY + 12) + 'px';
@@ -111,13 +109,21 @@ function setupTooltipEvents(): void {
     }
   });
 
+  document.addEventListener('mousemove', (event: MouseEvent) => {
+    if (tooltip.style.display === 'block') {
+      tooltip.style.top = (event.clientY + 12) + 'px';
+      tooltip.style.left = (event.clientX + 12) + 'px';
+    }
+  });
+
   document.addEventListener('mouseout', (event: MouseEvent) => {
     const target = event.target as HTMLElement;
-    if (
-      target.tagName === 'MARK' &&
-      target.classList.contains('reading-support-highlight')
-    ) {
-      tooltip.style.display = 'none';
+    const mark = target.closest?.('mark.reading-support-highlight') as HTMLElement | null;
+    if (mark) {
+      const related = event.relatedTarget as HTMLElement | null;
+      if (!related || !mark.contains(related)) {
+        tooltip.style.display = 'none';
+      }
     }
   });
 }
