@@ -104,6 +104,8 @@ function setupTooltipEvents(): void {
       const memo = target.getAttribute('data-memo');
       if (memo && memo.length > 0) {
         tooltip.textContent = memo;
+        tooltip.style.top = (event.clientY + 12) + 'px';
+        tooltip.style.left = (event.clientX + 12) + 'px';
         tooltip.style.display = 'block';
       }
     }
