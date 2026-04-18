@@ -222,7 +222,7 @@
 
 ## 10. メモ機能コア実装
 
-- [ ] 10.1 (P) MemoInputUI コンポーネントを新規実装
+- [x] 10.1 (P) MemoInputUI コンポーネントを新規実装
   - `showMemoInput` メッセージを受信して Shadow DOM ベースのメモ入力オーバーレイを表示する
   - 選択テキストのプレビューと `<textarea>` によるメモ入力フィールド・Save/Cancel ボタンを含む UI を実装
   - Save 押下時に `saveSelection`（selectedText, pageUrl, memo）メッセージを Service Worker へ送信
