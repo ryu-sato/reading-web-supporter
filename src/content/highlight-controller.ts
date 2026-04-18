@@ -24,6 +24,8 @@ function getChromeRuntime(): ChromeRuntime | null {
   return g.chrome?.runtime ?? null;
 }
 
+import type { SavedHighlight } from '../types/types';
+
 /**
  * CSS スタイルが既に注入されたかどうかを追跡するフラグ
  */
@@ -63,14 +65,72 @@ function injectHighlightStyles(): void {
 }
 
 /**
+ * ツールチップ要素を取得または作成する（DOM に1つだけ保持する）
+ * Requirement 5.4: ツールチップ表示
+ */
+function getOrCreateTooltip(): HTMLDivElement {
+  let tooltip = document.querySelector('.reading-support-tooltip') as HTMLDivElement | null;
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.className = 'reading-support-tooltip';
+    tooltip.style.cssText =
+      'position: fixed; background: rgba(0,0,0,0.8); color: white; padding: 4px 8px; ' +
+      'border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 2147483646; display: none;';
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+/**
+ * ドキュメントレベルのイベント委譲でツールチップの表示/非表示を制御する
+ * Requirement 5.4: mouseover/mouseout でツールチップを表示/非表示
+ * Requirement 5.5: data-memo がない場合はツールチップを表示しない
+ */
+function setupTooltipEvents(): void {
+  const tooltip = getOrCreateTooltip();
+
+  // 既存リスナーの重複登録を避けるため、data 属性で管理
+  if (document.body.dataset.tooltipEventsSetup === 'true') {
+    return;
+  }
+  document.body.dataset.tooltipEventsSetup = 'true';
+
+  document.addEventListener('mouseover', (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (
+      target.tagName === 'MARK' &&
+      target.classList.contains('reading-support-highlight')
+    ) {
+      const memo = target.getAttribute('data-memo');
+      if (memo && memo.length > 0) {
+        tooltip.textContent = memo;
+        tooltip.style.display = 'block';
+      }
+    }
+  });
+
+  document.addEventListener('mouseout', (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (
+      target.tagName === 'MARK' &&
+      target.classList.contains('reading-support-highlight')
+    ) {
+      tooltip.style.display = 'none';
+    }
+  });
+}
+
+/**
  * DOM TreeWalker を使用してテキストを検索し、見つかった場合は <mark> でラップする
  * Requirement 4.2, 4.3: TreeWalker でテキストノードを走査し、<mark> でラップ
  * Requirement 4.4: 見つからないテキストはスキップして継続
+ * Requirement 5.4: memo が存在する場合は data-memo 属性を設定する
  *
  * @param text - ハイライト対象のテキスト
+ * @param memo - オプションのメモ（設定された場合 data-memo 属性として保存）
  * @returns ハイライトが適用されたかどうか
  */
-function highlightText(text: string): boolean {
+function highlightText(text: string, memo?: string): boolean {
   if (!text || !document.body) return false;
 
   // テキストノードを収集（script/style/ハイライト済みを除外）
@@ -138,6 +198,11 @@ function highlightText(text: string): boolean {
 
         const mark = document.createElement('mark');
         mark.className = 'reading-support-highlight';
+
+        // memo が空でない場合のみ data-memo 属性を設定（要件 5.4, 5.5）
+        if (memo && memo.length > 0) {
+          mark.setAttribute('data-memo', memo);
+        }
 
         // 複数ノードをまたがる場合は surroundContents が失敗するため extractContents を使用
         try {
@@ -225,19 +290,21 @@ async function getHighlights(pageUrl: string): Promise<HighlightsResponse> {
  * requestAnimationFrame 内で複数テキストのハイライト処理を実行する
  * Requirement 4.3: 複数テキストをすべてハイライト表示
  * Requirement 4.4: 見つからないテキストはスキップして継続
+ * Requirement 5.4: SavedHighlight[] を受け取り memo を処理する
  * Requirement 3.6（実装ノート）: メインスレッドをブロックしないようにする
  *
- * @param texts - ハイライト対象のテキスト配列
+ * @param highlights - ハイライト対象の SavedHighlight 配列
  */
-function highlightTextsInAnimationFrame(texts: string[]): void {
+function highlightTextsInAnimationFrame(highlights: SavedHighlight[]): void {
   requestAnimationFrame(() => {
-    for (const text of texts) {
+    for (const highlight of highlights) {
       try {
-        highlightText(text);
+        highlightText(highlight.text, highlight.memo);
       } catch (_e) {
         // 個別テキストのハイライト失敗は無視して続行
       }
     }
+    setupTooltipEvents();
   });
 }
 
@@ -266,14 +333,13 @@ async function initHighlightController(): Promise<void> {
     return;
   }
 
-  // 取得した各ハイライトのテキストを抽出してハイライト表示
-  // TODO: update in task 10.4 to handle memo display
+  // 取得した各ハイライト（テキストとメモ）を使ってハイライト表示
+  // Requirement 5.4: SavedHighlight[] を直接 highlightTextsInAnimationFrame に渡す
   const highlights = response.highlights || [];
-  const texts = highlights.map((h) => h.text);
-  console.log('[ReadingSupport] 取得したテキスト数:', texts.length, texts);
-  if (texts.length > 0) {
-    console.log('[ReadingSupport] ハイライト対象テキスト:', JSON.stringify(texts));
-    highlightTextsInAnimationFrame(texts);
+  console.log('[ReadingSupport] 取得したハイライト数:', highlights.length, highlights);
+  if (highlights.length > 0) {
+    console.log('[ReadingSupport] ハイライト対象:', JSON.stringify(highlights));
+    highlightTextsInAnimationFrame(highlights);
   }
 }
 

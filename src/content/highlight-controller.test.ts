@@ -54,6 +54,9 @@ beforeEach(() => {
   // DOM を初期化
   document.body.innerHTML = '';
 
+  // ツールチップイベントのセットアップフラグをリセット（テスト間の独立性確保）
+  delete document.body.dataset.tooltipEventsSetup;
+
   // CSS インジェクション状態をリセット（エクスポート されていないため、テスト毎にリセット）
   const styles = document.querySelectorAll('style');
   styles.forEach((style) => {
@@ -301,8 +304,8 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       p.textContent = '重要な文章1です。これも重要な文章2です。';
       document.body.appendChild(p);
 
-      const texts = ['重要な文章1', '重要な文章2'];
-      highlightTextsInAnimationFrame(texts);
+      const highlights = [{ text: '重要な文章1' }, { text: '重要な文章2' }];
+      highlightTextsInAnimationFrame(highlights);
 
       expect(mockRequestAnimationFrame).toHaveBeenCalled();
       const marks = document.querySelectorAll('mark.reading-support-highlight');
@@ -314,8 +317,12 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       p.textContent = '重要な文章1です。';
       document.body.appendChild(p);
 
-      const texts = ['存在しないテキスト', '重要な文章1', '別の存在しないテキスト'];
-      highlightTextsInAnimationFrame(texts);
+      const highlights = [
+        { text: '存在しないテキスト' },
+        { text: '重要な文章1' },
+        { text: '別の存在しないテキスト' },
+      ];
+      highlightTextsInAnimationFrame(highlights);
 
       expect(mockRequestAnimationFrame).toHaveBeenCalled();
       const marks = document.querySelectorAll('mark.reading-support-highlight');
@@ -323,9 +330,9 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
     });
 
     it('空配列を渡した場合、エラーなく処理する', () => {
-      const texts: string[] = [];
+      const highlights: { text: string; memo?: string }[] = [];
       expect(() => {
-        highlightTextsInAnimationFrame(texts);
+        highlightTextsInAnimationFrame(highlights);
       }).not.toThrow();
       expect(mockRequestAnimationFrame).toHaveBeenCalled();
     });
@@ -342,7 +349,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       p.textContent = 'テスト';
       document.body.appendChild(p);
 
-      highlightTextsInAnimationFrame(['テスト']);
+      highlightTextsInAnimationFrame([{ text: 'テスト' }]);
 
       expect(callback).toHaveBeenCalled();
     });
@@ -353,9 +360,13 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       document.body.appendChild(p);
 
       // 一部のテキストは見つからない（エラー扱いでなく、スキップ）
-      const texts = ['正常なテキスト', '見つからないテキスト', '正常なテキスト'];
+      const highlights = [
+        { text: '正常なテキスト' },
+        { text: '見つからないテキスト' },
+        { text: '正常なテキスト' },
+      ];
       expect(() => {
-        highlightTextsInAnimationFrame(texts);
+        highlightTextsInAnimationFrame(highlights);
       }).not.toThrow();
     });
   });
@@ -489,6 +500,156 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
 
       // 内部的に init() を再度呼び出す場合があっても、isInitialized フラグで防止される
       expect(mockSendMessage.mock.calls.length).toBeLessThanOrEqual(initialCallCount + 1);
+    });
+  });
+
+  describe('ツールチップ表示 - Requirements 5.4, 5.5', () => {
+    it('memo ありの SavedHighlight で <mark> に data-memo 属性が設定される（要件 5.4）', () => {
+      const p = document.createElement('p');
+      p.textContent = 'これはメモ付きのハイライトです。';
+      document.body.appendChild(p);
+
+      highlightText('メモ付きのハイライト', 'テストメモ内容');
+
+      const mark = document.querySelector('mark.reading-support-highlight');
+      expect(mark).not.toBeNull();
+      expect(mark?.getAttribute('data-memo')).toBe('テストメモ内容');
+    });
+
+    it('memo なしの場合、<mark> に data-memo 属性は設定されない', () => {
+      const p = document.createElement('p');
+      p.textContent = 'これはメモなしのハイライトです。';
+      document.body.appendChild(p);
+
+      highlightText('メモなしのハイライト');
+
+      const mark = document.querySelector('mark.reading-support-highlight');
+      expect(mark).not.toBeNull();
+      expect(mark?.hasAttribute('data-memo')).toBe(false);
+    });
+
+    it('memo が空文字の場合、<mark> に data-memo 属性は設定されない（要件 5.5）', () => {
+      const p = document.createElement('p');
+      p.textContent = 'これは空メモのハイライトです。';
+      document.body.appendChild(p);
+
+      highlightText('空メモのハイライト', '');
+
+      const mark = document.querySelector('mark.reading-support-highlight');
+      expect(mark).not.toBeNull();
+      expect(mark?.hasAttribute('data-memo')).toBe(false);
+    });
+
+    it('ページに .reading-support-tooltip 要素が1つ作成される', () => {
+      const p = document.createElement('p');
+      p.textContent = 'ツールチップテスト文章';
+      document.body.appendChild(p);
+
+      highlightTextsInAnimationFrame([{ text: 'ツールチップテスト', memo: 'メモ' }]);
+
+      const tooltips = document.querySelectorAll('.reading-support-tooltip');
+      expect(tooltips.length).toBe(1);
+    });
+
+    it('mouseover 時に data-memo を持つ mark 要素でツールチップが表示される', () => {
+      const p = document.createElement('p');
+      p.textContent = 'ホバーテスト文章';
+      document.body.appendChild(p);
+
+      highlightText('ホバーテスト', 'ホバーメモ');
+      // setupTooltipEvents を呼び出してイベントを設定する
+      highlightTextsInAnimationFrame([]);
+
+      const mark = document.querySelector('mark.reading-support-highlight') as HTMLElement;
+      expect(mark).not.toBeNull();
+      expect(mark.getAttribute('data-memo')).toBe('ホバーメモ');
+
+      const tooltip = document.querySelector('.reading-support-tooltip') as HTMLElement;
+      expect(tooltip).not.toBeNull();
+
+      // mouseover イベントを発火
+      const event = new MouseEvent('mouseover', { bubbles: true });
+      mark.dispatchEvent(event);
+
+      expect(tooltip.style.display).not.toBe('none');
+      expect(tooltip.textContent).toBe('ホバーメモ');
+    });
+
+    it('mouseout でツールチップが非表示になる', () => {
+      const p = document.createElement('p');
+      p.textContent = 'マウスアウトテスト文章';
+      document.body.appendChild(p);
+
+      highlightText('マウスアウトテスト', 'アウトメモ');
+      highlightTextsInAnimationFrame([]);
+
+      const mark = document.querySelector('mark.reading-support-highlight') as HTMLElement;
+      const tooltip = document.querySelector('.reading-support-tooltip') as HTMLElement;
+
+      // まず mouseover で表示
+      mark.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(tooltip.style.display).not.toBe('none');
+
+      // mouseout で非表示
+      mark.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+      expect(tooltip.style.display).toBe('none');
+    });
+
+    it('data-memo を持たない mark 要素ではツールチップが表示されない（要件 5.5）', () => {
+      const p = document.createElement('p');
+      p.textContent = 'メモなしホバーテスト文章';
+      document.body.appendChild(p);
+
+      // memo なしでハイライト
+      highlightText('メモなしホバーテスト');
+      highlightTextsInAnimationFrame([]);
+
+      const mark = document.querySelector('mark.reading-support-highlight') as HTMLElement;
+      expect(mark).not.toBeNull();
+      expect(mark.hasAttribute('data-memo')).toBe(false);
+
+      const tooltip = document.querySelector('.reading-support-tooltip') as HTMLElement;
+      expect(tooltip).not.toBeNull();
+      // 最初は非表示
+      expect(tooltip.style.display).toBe('none');
+
+      // mouseover を発火してもツールチップは表示されない
+      mark.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(tooltip.style.display).toBe('none');
+    });
+
+    it('ツールチップは innerHTML を使わず textContent で設定される（XSS 防止）', () => {
+      const p = document.createElement('p');
+      p.textContent = 'XSSテスト文章';
+      document.body.appendChild(p);
+
+      const xssPayload = '<script>alert("xss")</script>';
+      highlightText('XSSテスト', xssPayload);
+      highlightTextsInAnimationFrame([]);
+
+      const mark = document.querySelector('mark.reading-support-highlight') as HTMLElement;
+      mark.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+
+      const tooltip = document.querySelector('.reading-support-tooltip') as HTMLElement;
+      // textContent はタグを解釈しない
+      expect(tooltip.textContent).toBe(xssPayload);
+      // innerHTML でセットされていれば script タグが含まれる可能性があるが、
+      // textContent でセットされた場合は innerHTMLにはエスケープされた文字列が入る
+      expect(tooltip.querySelector('script')).toBeNull();
+    });
+
+    it('highlightTextsInAnimationFrame が SavedHighlight[] を受け取り memo を処理する', () => {
+      const p = document.createElement('p');
+      p.textContent = 'SavedHighlightテスト文章';
+      document.body.appendChild(p);
+
+      // SavedHighlight[] を渡す（新しいシグネチャ）
+      const highlights = [{ text: 'SavedHighlightテスト', memo: 'ハイライトメモ' }];
+      highlightTextsInAnimationFrame(highlights);
+
+      const mark = document.querySelector('mark.reading-support-highlight');
+      expect(mark).not.toBeNull();
+      expect(mark?.getAttribute('data-memo')).toBe('ハイライトメモ');
     });
   });
 

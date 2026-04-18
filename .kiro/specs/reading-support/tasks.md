@@ -259,7 +259,7 @@
   - _Boundary: Service Worker Domain - Supabase統合_
   - _Depends: 9.1_
 
-- [ ] 10.5 (P) HighlightController にツールチップ表示を追加
+- [x] 10.5 (P) HighlightController にツールチップ表示を追加
   - `HighlightsResponse.highlights` (`SavedHighlight[]`) を受け取るよう更新（`texts?: string[]` から変更）
   - `<mark>` 要素のラップ時に `memo` が存在する場合 `data-memo` 属性を設定する（5.4）
   - ページに1つのツールチップ要素（`<div class="reading-support-tooltip">`）を保持し mouseover/mouseout イベントで表示/非表示を切り替える
