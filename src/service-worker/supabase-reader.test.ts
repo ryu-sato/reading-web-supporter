@@ -47,7 +47,10 @@ describe('SupabaseReader', () => {
 
     // Supabase クライアントのチェーンメソッド
     mockEq.mockResolvedValue({
-      data: [{ selected_text: 'テスト選択テキスト1' }, { selected_text: 'テスト選択テキスト2' }],
+      data: [
+        { selected_text: 'テスト選択テキスト1', memo: 'メモ1' },
+        { selected_text: 'テスト選択テキスト2', memo: null },
+      ],
       error: null,
     });
 
@@ -77,13 +80,13 @@ describe('SupabaseReader', () => {
       expect(result.error).toBeUndefined();
     });
 
-    it('SELECT時に selected_text カラムを指定して取得する (Req 4.1)', async () => {
+    it('SELECT時に selected_text と memo カラムを指定して取得する (Req 4.1, 5.4)', async () => {
       const resultPromise = reader.fetchSavedTexts(mockFetchOptions);
       jest.runAllTimersAsync();
       await resultPromise;
 
       expect(mockFrom).toHaveBeenCalledWith('readings');
-      expect(mockSelect).toHaveBeenCalledWith('selected_text');
+      expect(mockSelect).toHaveBeenCalledWith('selected_text, memo');
       expect(mockEq).toHaveBeenCalledWith('page_url', mockFetchOptions.pageUrl);
     });
 
@@ -93,7 +96,39 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.highlights).toEqual([{ text: 'テスト選択テキスト1' }, { text: 'テスト選択テキスト2' }]);
+      expect(result.highlights).toEqual([
+        { text: 'テスト選択テキスト1', memo: 'メモ1' },
+        { text: 'テスト選択テキスト2', memo: undefined },
+      ]);
+    });
+
+    it('memo があるレコードは memo フィールドを含めて返す (Req 5.4)', async () => {
+      mockEq.mockResolvedValue({
+        data: [{ selected_text: 'テキスト', memo: 'これはメモです' }],
+        error: null,
+      });
+
+      const resultPromise = reader.fetchSavedTexts(mockFetchOptions);
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.highlights).toEqual([{ text: 'テキスト', memo: 'これはメモです' }]);
+    });
+
+    it('memo が NULL のレコードは memo: undefined として返す (Req 5.4)', async () => {
+      mockEq.mockResolvedValue({
+        data: [{ selected_text: 'テキスト', memo: null }],
+        error: null,
+      });
+
+      const resultPromise = reader.fetchSavedTexts(mockFetchOptions);
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.highlights).toEqual([{ text: 'テキスト', memo: undefined }]);
+      expect(result.highlights![0].memo).toBeUndefined();
     });
 
     it('保存済みテキストが0件の場合、空配列を返す (Req 4.1)', async () => {
@@ -297,9 +332,9 @@ describe('SupabaseReader', () => {
     it('複数の保存済みテキストをすべて返す', async () => {
       mockEq.mockResolvedValue({
         data: [
-          { selected_text: 'テキスト1' },
-          { selected_text: 'テキスト2' },
-          { selected_text: 'テキスト3' },
+          { selected_text: 'テキスト1', memo: 'メモA' },
+          { selected_text: 'テキスト2', memo: null },
+          { selected_text: 'テキスト3', memo: 'メモC' },
         ],
         error: null,
       });
@@ -310,15 +345,19 @@ describe('SupabaseReader', () => {
 
       expect(result.success).toBe(true);
       expect(result.highlights).toHaveLength(3);
-      expect(result.highlights).toEqual([{ text: 'テキスト1' }, { text: 'テキスト2' }, { text: 'テキスト3' }]);
+      expect(result.highlights).toEqual([
+        { text: 'テキスト1', memo: 'メモA' },
+        { text: 'テキスト2', memo: undefined },
+        { text: 'テキスト3', memo: 'メモC' },
+      ]);
     });
 
     it('長いテキストと短いテキストを混在して返す', async () => {
       mockEq.mockResolvedValue({
         data: [
-          { selected_text: 'a' },
-          { selected_text: 'これは長いテストテキストです。複数行の内容を含むことができます。' },
-          { selected_text: 'b' },
+          { selected_text: 'a', memo: null },
+          { selected_text: 'これは長いテストテキストです。複数行の内容を含むことができます。', memo: '長いメモ' },
+          { selected_text: 'b', memo: null },
         ],
         error: null,
       });
@@ -340,7 +379,7 @@ describe('SupabaseReader', () => {
       const url2 = 'https://example.com/page2';
 
       mockEq.mockResolvedValue({
-        data: [{ selected_text: 'テキスト1' }],
+        data: [{ selected_text: 'テキスト1', memo: null }],
         error: null,
       });
 

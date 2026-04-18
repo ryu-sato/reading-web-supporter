@@ -112,11 +112,11 @@ export class SupabaseReader implements SupabaseReaderService {
 
     try {
       type SelectResult = {
-        data: Array<{ selected_text: string }> | null;
+        data: Array<{ selected_text: string; memo: string | null }> | null;
         error: { code?: string; message?: string; status?: number } | null;
       };
       const { data, error } = await withTimeout(
-        supabase.from('readings').select('selected_text').eq('page_url', pageUrl) as unknown as Promise<SelectResult>,
+        supabase.from('readings').select('selected_text, memo').eq('page_url', pageUrl) as unknown as Promise<SelectResult>,
         TIMEOUT_MS
       );
 
@@ -128,9 +128,14 @@ export class SupabaseReader implements SupabaseReaderService {
         };
       }
 
-      // 成功: data を highlights 配列に変換
-      // TODO: update in task 10.5 to include memo field from DB
-      const highlights = data && Array.isArray(data) ? data.map((row) => ({ text: row.selected_text })) : [];
+      // 成功: data を highlights 配列に変換（selected_text と memo を含む）
+      const highlights =
+        data && Array.isArray(data)
+          ? data.map((row) => ({
+              text: row.selected_text,
+              memo: row.memo ?? undefined, // NULL → undefined
+            }))
+          : [];
       return {
         success: true,
         highlights,

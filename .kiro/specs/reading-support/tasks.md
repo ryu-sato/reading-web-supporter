@@ -250,7 +250,7 @@
   - _Boundary: Service Worker Domain - Supabase統合, メッセージルーティング_
   - _Depends: 9.1_
 
-- [ ] 10.4 (P) SupabaseReader をメモ取得対応に更新
+- [x] 10.4 (P) SupabaseReader をメモ取得対応に更新
   - `fetchSavedTexts` クエリを `select('selected_text, memo')` に変更して `memo` カラムも取得する
   - 戻り値の型を `string[]` から `SavedHighlight[]`（`{ text: string; memo?: string }`）に変更
   - `memo` が NULL のレコードは `memo: undefined` として返却する
