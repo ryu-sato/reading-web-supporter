@@ -312,6 +312,113 @@
   - Cancel 押下後 → 保存されず Supabase にレコードが追加されていないことを確認
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
+## 13. R6メモ編集・削除機能の型定義更新
+
+- [ ] 13.1 共有型定義に編集・削除機能用の型を追加する
+  - `SavedHighlight` インターフェースに `id: string` フィールドを追加する（編集・削除操作のレコード識別子として使用）
+  - `UpdateMemoMessage`（`{ type: 'updateMemo'; payload: { id: string; memo: string } }`）を `ExtensionMessage` 共用体に追加する
+  - `DeleteHighlightMessage`（`{ type: 'deleteHighlight'; payload: { id: string } }`）を `ExtensionMessage` 共用体に追加する
+  - `UpdateResult`・`DeleteResult` インターフェース（`success: boolean; error?: { code, message, recoveryHint }`）を追加する
+  - 全コンポーネントが新型定義をインポートしてビルドエラーなしでコンパイル可能
+  - _Requirements: 6.1, 6.3, 6.4_
+  - _Boundary: 共有型定義_
+
+## 14. R6メモ編集・削除機能コア実装
+
+- [ ] 14.1 (P) HighlightActionPopup コンポーネントを実装する
+  - Shadow DOM ベースのポップアップを `<mark>` 要素近傍に表示する
+  - VIEW ステート：現在のメモ内容（未設定の場合は空欄）・「メモを編集」ボタン・「ハイライトを削除」ボタンを表示する（6.1）
+  - EDIT ステート：既存メモが入力済みの textarea と「保存」・「キャンセル」ボタンを表示する（6.2）
+  - 「保存」押下時に `updateMemo` メッセージを Service Worker へ送信し、成功時は HighlightController へ `onMemoUpdated` コールバックを呼び出す（6.3）
+  - 「ハイライトを削除」押下時に削除確認を表示し、確定後 `deleteHighlight` メッセージを送信して `onHighlightDeleted` コールバックを呼び出す（6.4）
+  - 更新・削除失敗時はエラーメッセージを表示しポップアップを維持する（6.5）
+  - ポップアップ外クリックまたはキャンセル押下でポップアップを閉じ変更を保存しない（6.6）
+  - メモ表示は XSS を防ぐため `textContent` のみを使用する（`innerHTML` 禁止）
+  - メモ編集・削除操作が正常に動作し、失敗時のエラー表示が機能する
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
+  - _Boundary: Content Script Domain_
+  - _Depends: 13.1_
+
+- [ ] 14.2 (P) コンテキストメニューのラベルを更新する
+  - ContextMenuHandler の `chrome.contextMenus.create()` 呼び出しのラベルを「ハイライトしてメモを保存」に変更する
+  - 右クリックメニューに「ハイライトしてメモを保存」が表示される
+  - _Requirements: 1.1_
+  - _Boundary: Service Worker Domain - コンテキストメニュー統合_
+
+- [ ] 14.3 (P) SupabaseWriter にメモ更新・レコード削除操作を追加する
+  - `updateMemo(id: string, memo: string): Promise<UpdateResult>` メソッドを実装する（指定レコードの `memo` カラムを UPDATE）
+  - `deleteRecord(id: string): Promise<DeleteResult>` メソッドを実装する（指定レコードを DELETE）
+  - 更新・削除失敗時は `UpdateResult`/`DeleteResult` の `success: false` と構造化されたエラーコードを返す（6.5）
+  - exponential backoff（1s, 2s, 4s）で最大 3 回リトライする
+  - memo 更新・レコード削除操作が Supabase に正常に反映される
+  - _Requirements: 6.3, 6.4, 6.5_
+  - _Boundary: Service Worker Domain - Supabase統合_
+  - _Depends: 13.1_
+
+- [ ] 14.4 (P) SupabaseReader が保存済みテキストの ID を取得するよう更新する
+  - `fetchSavedTexts` のクエリを `select('id, selected_text, memo')` に変更する
+  - 戻り値の `SavedHighlight` に `id` フィールドを含めて返却する
+  - `getHighlights` レスポンスに `id` フィールドを含む `SavedHighlight[]` が返却される
+  - _Requirements: 6.1_
+  - _Boundary: Service Worker Domain - Supabase統合_
+  - _Depends: 13.1_
+
+- [ ] 14.5 (P) MessageHandler にメモ編集・削除ハンドラを追加する
+  - `updateMemo` メッセージ受信時に `SupabaseWriter.updateMemo()` を実行するハンドラを追加する
+  - `deleteHighlight` メッセージ受信時に `SupabaseWriter.deleteRecord()` を実行するハンドラを追加する
+  - 結果（`UpdateResult`/`DeleteResult`）を Content Script に非同期で返却する
+  - `updateMemo`/`deleteHighlight` メッセージが Content Script から Service Worker を経由して Supabase へ正常に流れる
+  - _Requirements: 6.3, 6.4_
+  - _Boundary: Service Worker Domain - メッセージルーティング_
+  - _Depends: 13.1, 14.3_
+
+## 15. R6メモ編集・削除機能統合
+
+- [ ] 15.1 HighlightController にクリック処理と HighlightActionPopup 制御を追加する
+  - `<mark>` 要素ラップ時に `data-record-id` 属性（`SavedHighlight.id`）を設定する（6.1）
+  - `<mark>` 要素のクリックイベントを検知して HighlightActionPopup を開く（6.1）
+  - HighlightActionPopup の `onMemoUpdated(id, newMemo)` コールバックで対応する `<mark>` 要素の `data-memo` 属性を更新する（6.3）
+  - HighlightActionPopup の `onHighlightDeleted(id)` コールバックで対応する `<mark>` 要素を DOM から除去する（6.4）
+  - ハイライトクリックでポップアップが開き、編集保存後にツールチップ内容が即座に反映され、削除後にハイライトが消去される
+  - _Requirements: 6.1, 6.3, 6.4_
+  - _Boundary: Content Script Domain_
+  - _Depends: 14.1, 14.4_
+
+- [ ] 15.2 編集・削除の全体フローを接続して動作確認する
+  - Content Script エントリポイントに `HighlightActionPopup` のインスタンスを作成・初期化する
+  - 完全なフローを確認：ハイライトクリック → VIEW ポップアップ → 「メモを編集」 → EDIT ステート → 保存 → `updateMemo` → MessageHandler → SupabaseWriter → Supabase UPDATE → `<mark>` の `data-memo` 更新
+  - 完全なフローを確認：ハイライトクリック → VIEW ポップアップ → 「ハイライトを削除」 → 削除確認 → `deleteHighlight` → MessageHandler → SupabaseWriter → Supabase DELETE → `<mark>` 要素除去
+  - memo ありの保存済みテキストを含むページで、編集・削除の全フローが正常に機能する
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
+  - _Depends: 15.1, 14.5_
+
+## 16. R6メモ編集・削除機能検証
+
+- [ ]* 16.1 R6メモ編集・削除機能のユニットテスト
+  - HighlightActionPopup: `show()` 呼び出しで VIEW ステートのポップアップが DOM に挿入されること
+  - HighlightActionPopup: 「メモを編集」クリックで EDIT ステート（textarea に既存メモ入力済み）に遷移すること（6.2）
+  - HighlightActionPopup: EDIT 状態で「保存」押下時に `updateMemo` メッセージが送信されること（6.3）
+  - HighlightActionPopup: 「ハイライトを削除」押下で削除確認が表示され、確定後 `deleteHighlight` が送信されること（6.4）
+  - HighlightActionPopup: 更新・削除失敗時にエラーメッセージが表示されポップアップが維持されること（6.5）
+  - HighlightActionPopup: キャンセル・外部クリックで `updateMemo`/`deleteHighlight` が送信されないこと（6.6）
+  - HighlightController: `<mark>` 要素に `data-record-id` が設定されること（6.1）
+  - HighlightController: `<mark>` クリックで `HighlightActionPopup.show()` が呼ばれること（6.1）
+  - HighlightController: `onMemoUpdated` コールバックで `data-memo` 属性が更新されること（6.3）
+  - HighlightController: `onHighlightDeleted` コールバックで `<mark>` 要素が DOM から除去されること（6.4）
+  - SupabaseWriter: `updateMemo()` が成功時に `UpdateResult.success = true` を返すこと（6.3）
+  - SupabaseWriter: `deleteRecord()` が成功時に `DeleteResult.success = true` を返すこと（6.4）
+  - SupabaseReader: `id` フィールドを含む `SavedHighlight[]` が返却されること（6.1）
+  - 全コンポーネントが外部依存のモッキングで分離されたユニットテストに合格
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
+
+- [ ]* 16.2 R6メモ編集・削除機能のエンドツーエンドテスト
+  - ハイライトクリック → 「メモを編集」 → memo 変更 → 保存 → Supabase UPDATE 確認 → ツールチップ内容更新確認（6.3）
+  - ハイライトクリック → 「ハイライトを削除」 → 削除確認 → 削除 → Supabase DELETE 確認 → `<mark>` 要素消去確認（6.4）
+  - 更新失敗シナリオ → エラーメッセージ表示・メモ内容が変更前のままであることを確認（6.5）
+  - 削除失敗シナリオ → エラーメッセージ表示・ハイライトが維持されることを確認（6.5）
+  - キャンセル操作 → Supabase に変更が加えられていないことを確認（6.6）
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
+
 ## 実装メモ
 
 - 基盤タスクはTypeScriptビルド環境とChrome拡張機能構造を確立
@@ -321,6 +428,8 @@
 - *マークのタスクはMVP後に延期可能なオプションのテストカバレッジ
 - タスク1〜4はRequirement 1-3（テキスト選択・保存・認証情報管理）をカバーし完了済み
 - タスク5〜8はRequirement 4（保存済みテキストのハイライト表示）の新規実装が完了済み
-- タスク9〜12はRequirement 5（選択テキストへのメモ追加）の新規実装
-- メモ機能追加により Supabase の `readings` テーブルに `memo TEXT` カラムが必要（既存ユーザーは `ALTER TABLE readings ADD COLUMN memo TEXT;` を実行）
-- タスク9.1 の型変更（`HighlightsResponse.texts` → `highlights`）はブレイキングチェンジ。タスク10.4 と 10.5 が同時に更新されるため並列実装時は同一PR/ブランチで対応
+- タスク9〜12はRequirement 5（選択テキストへのメモ追加）の新規実装が完了済み
+- タスク13〜16はRequirement 1.1（ラベル更新）とRequirement 6（メモ編集・削除）の新規実装
+- メモ編集・削除機能追加により Supabase の `readings` テーブルに UPDATE・DELETE の RLS ポリシーが必要（既存ユーザーは `CREATE POLICY readings_anon_update ON readings FOR UPDATE USING (true); CREATE POLICY readings_anon_delete ON readings FOR DELETE USING (true);` を実行）
+- タスク13.1 の型変更（`SavedHighlight` に `id` 追加）はブレイキングチェンジ。タスク14.3 と 14.4 が同時に更新されるため並列実装時は同一PR/ブランチで対応
+- HighlightActionPopup は VIEW/EDIT の 2 ステートを 1 コンポーネントで管理（MemoInputUI と同じ Shadow DOM パターン）
