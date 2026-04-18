@@ -242,7 +242,7 @@
   - _Boundary: Service Worker Domain - コンテキストメニュー統合_
   - _Depends: 9.1_
 
-- [ ] 10.3 (P) SupabaseWriter と MessageHandler をメモ対応に更新
+- [x] 10.3 (P) SupabaseWriter と MessageHandler をメモ対応に更新
   - `SupabaseWriter.save()` の INSERT 文に `memo` フィールドを追加（undefined の場合は NULL として挿入）
   - MessageHandler の `saveSelection` ハンドラで `memo` フィールドを `SupabaseWriter.save()` に渡すよう更新
   - memo ありの INSERT でレコードに `memo` カラムの値が格納されること、memo なし（undefined）で NULL が格納されることを確認

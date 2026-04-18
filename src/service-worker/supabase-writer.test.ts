@@ -76,7 +76,7 @@ describe('SupabaseWriter', () => {
       expect(result.error).toBeUndefined();
     });
 
-    it('INSERT時に selected_text, page_url, created_at を渡す (Req 2.1)', async () => {
+    it('INSERT時に selected_text, page_url, created_at, memo(null) を渡す (Req 2.1, 5.2)', async () => {
       const resultPromise = writer.save(mockSaveOptions);
       jest.runAllTimersAsync();
       await resultPromise;
@@ -86,7 +86,38 @@ describe('SupabaseWriter', () => {
         selected_text: mockSaveOptions.selectedText,
         page_url: mockSaveOptions.pageUrl,
         created_at: mockSaveOptions.timestamp,
+        memo: null,
       });
+    });
+
+    it('memo あり: INSERT 時に memo カラムに値が格納される (Req 5.2)', async () => {
+      const optionsWithMemo: SaveTextOptions = {
+        ...mockSaveOptions,
+        memo: 'これは重要なメモです',
+      };
+      const resultPromise = writer.save(optionsWithMemo);
+      jest.runAllTimersAsync();
+      await resultPromise;
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({ memo: 'これは重要なメモです' })
+      );
+    });
+
+    it('memo なし (undefined): INSERT 時に memo カラムが null になる (Req 5.2)', async () => {
+      const optionsWithoutMemo: SaveTextOptions = {
+        selectedText: 'テキスト',
+        pageUrl: 'https://example.com',
+        timestamp: '2026-04-13T00:00:00.000Z',
+        // memo は未定義
+      };
+      const resultPromise = writer.save(optionsWithoutMemo);
+      jest.runAllTimersAsync();
+      await resultPromise;
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({ memo: null })
+      );
     });
 
     it('保存成功時に success: true と data を返す (Req 1.3)', async () => {

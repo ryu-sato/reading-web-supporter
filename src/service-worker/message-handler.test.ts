@@ -54,8 +54,10 @@ const mockSettingsManager = {
 
 // SupabaseWriter モック
 const mockTestConnection = jest.fn();
+const mockSave = jest.fn();
 const mockSupabaseWriter = {
   testConnection: mockTestConnection,
+  save: mockSave,
 };
 
 /**
@@ -226,21 +228,73 @@ describe('MessageHandler', () => {
     });
   });
 
-  // ── 未知のメッセージタイプ ──────────────────────────────────────────────────
+  // ── saveSelection メッセージハンドラー (Req 5.2, 5.3) ───────────────────────
 
-  describe('未知のメッセージタイプの処理', () => {
-    it('未知のメッセージタイプはエラーをスローしない', () => {
-      expect(() => {
-        dispatchMessage({ type: 'saveSelection', payload: { selectedText: '', pageUrl: '', timestamp: '' } });
-      }).not.toThrow();
+  describe('saveSelection メッセージの処理 (Req 5.2, 5.3)', () => {
+    it('saveSelection メッセージで SupabaseWriter.save() が呼ばれる', async () => {
+      mockSave.mockResolvedValue({ success: true, data: { id: 'test-id', created_at: '2026-04-13T00:00:00.000Z' } });
+
+      const payload = {
+        selectedText: '保存するテキスト',
+        pageUrl: 'https://example.com/page',
+        timestamp: '2026-04-13T00:00:00.000Z',
+      };
+      const sendResponse = jest.fn();
+      const result = dispatchMessage({ type: 'saveSelection', payload }, sendResponse);
+      expect(result).toBe(true);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockSave).toHaveBeenCalledWith(payload);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, data: { id: 'test-id', created_at: '2026-04-13T00:00:00.000Z' } });
     });
 
-    it('未知のメッセージタイプは false を返す', () => {
-      const result = dispatchMessage({
-        type: 'saveSelection',
-        payload: { selectedText: '', pageUrl: '', timestamp: '' },
-      });
-      expect(result).toBeFalsy();
+    it('memo フィールドが SupabaseWriter.save() に渡される (Req 5.2)', async () => {
+      mockSave.mockResolvedValue({ success: true, data: { id: 'test-id', created_at: '2026-04-13T00:00:00.000Z' } });
+
+      const payloadWithMemo = {
+        selectedText: 'メモ付きテキスト',
+        pageUrl: 'https://example.com/page',
+        timestamp: '2026-04-13T00:00:00.000Z',
+        memo: '重要なメモ',
+      };
+      const sendResponse = jest.fn();
+      dispatchMessage({ type: 'saveSelection', payload: payloadWithMemo }, sendResponse);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockSave).toHaveBeenCalledWith(payloadWithMemo);
+      expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ memo: '重要なメモ' }));
+    });
+
+    it('memo なしの saveSelection も正しく動作する (Req 5.2)', async () => {
+      mockSave.mockResolvedValue({ success: true, data: { id: 'test-id', created_at: '2026-04-13T00:00:00.000Z' } });
+
+      const payloadWithoutMemo = {
+        selectedText: 'メモなしテキスト',
+        pageUrl: 'https://example.com/page',
+        timestamp: '2026-04-13T00:00:00.000Z',
+      };
+      const sendResponse = jest.fn();
+      dispatchMessage({ type: 'saveSelection', payload: payloadWithoutMemo }, sendResponse);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockSave).toHaveBeenCalledWith(payloadWithoutMemo);
+    });
+
+    it('saveSelection 失敗時もエラーレスポンスが返される', async () => {
+      mockSave.mockResolvedValue({ success: false, error: { code: 'NETWORK_ERROR', message: 'ネットワークエラー', recoveryHint: '再試行してください' } });
+
+      const payload = {
+        selectedText: 'テキスト',
+        pageUrl: 'https://example.com/page',
+        timestamp: '2026-04-13T00:00:00.000Z',
+      };
+      const sendResponse = jest.fn();
+      dispatchMessage({ type: 'saveSelection', payload }, sendResponse);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
     });
   });
 

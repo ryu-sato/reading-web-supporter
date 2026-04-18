@@ -127,6 +127,7 @@ export class SupabaseWriter implements SupabaseWriterService {
     const record = {
       selected_text: options.selectedText,
       page_url: options.pageUrl,
+      memo: options.memo ?? null,  // undefined の場合は null (DB の NULL)
       created_at,
     };
 

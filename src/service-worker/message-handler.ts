@@ -14,7 +14,7 @@
  * - testConnection: SupabaseWriter.testConnection() に委譲（Options Page からのリクエスト）
  */
 
-import type { ExtensionMessage, TextSelectionMessage, SupabaseCredentials } from '../types/types';
+import type { ExtensionMessage, TextSelectionMessage, SupabaseCredentials, SaveTextOptions, SaveResult, HighlightsResponse } from '../types/types';
 import { SettingsManager } from './settings-manager';
 import { SupabaseWriter } from './supabase-writer';
 import { SupabaseReader } from './supabase-reader';
@@ -43,12 +43,13 @@ interface ISettingsManager {
 
 /** SupabaseWriter の最小インターフェース（テスト用にインジェクション可能） */
 interface ISupabaseWriter {
+  save(options: SaveTextOptions): Promise<SaveResult>;
   testConnection(): Promise<{ success: boolean; message: string }>;
 }
 
 /** SupabaseReader の最小インターフェース（テスト用にインジェクション可能） */
 interface ISupabaseReader {
-  fetchSavedTexts(options: { pageUrl: string }): Promise<{ success: boolean; texts?: string[]; error?: { code: string; message: string } }>;
+  fetchSavedTexts(options: { pageUrl: string }): Promise<HighlightsResponse>;
 }
 
 /** 選択状態の型エイリアス */
@@ -130,6 +131,9 @@ export class MessageHandler {
 
       case 'testConnection':
         return this.handleTestConnection(sendResponse);
+
+      case 'saveSelection':
+        return this.handleSaveSelection(message.payload, sendResponse);
 
       case 'getHighlights':
         return this.handleGetHighlights(message.payload.pageUrl, sendResponse);
@@ -226,6 +230,25 @@ export class MessageHandler {
    */
   private handleTestConnection(sendResponse: (response?: unknown) => void): true {
     this.supabaseWriter.testConnection().then((result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  /**
+   * saveSelection メッセージの処理
+   * Content Script / Popup から送信された選択テキストとオプションの memo を Supabase へ保存する
+   *
+   * Requirement 5.2: メモフィールドを含めて Supabase へ INSERT する
+   * Requirement 5.3: memo が undefined の場合は NULL として INSERT する
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleSaveSelection(
+    payload: SaveTextOptions,
+    sendResponse: (response?: unknown) => void
+  ): true {
+    this.supabaseWriter.save(payload).then((result) => {
       sendResponse(result);
     });
     return true;
