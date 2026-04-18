@@ -20,7 +20,9 @@ import { createClient } from '@supabase/supabase-js';
 const mockStorageData: Record<string, unknown> = {};
 
 /** ContextMenuHandler.onClicked で登録されたリスナー */
-let capturedClickListener: ((info: Record<string, unknown>) => void) | null = null;
+let capturedClickListener:
+  | ((info: Record<string, unknown>, tab?: Record<string, unknown>) => void)
+  | null = null;
 
 /** MessageHandler.onMessage で登録されたリスナー */
 let capturedMessageListener:
@@ -43,7 +45,7 @@ const mockContextMenus = {
   create: jest.fn(),
   update: jest.fn(),
   onClicked: {
-    addListener: jest.fn((listener: (info: Record<string, unknown>) => void) => {
+    addListener: jest.fn((listener: (info: Record<string, unknown>, tab?: Record<string, unknown>) => void) => {
       capturedClickListener = listener;
     }),
     removeListener: jest.fn(),
@@ -108,12 +110,18 @@ const mockRuntime = {
   onStartup: { addListener: jest.fn() },
 };
 
+/** chrome.tabs API モック */
+const mockTabs = {
+  sendMessage: jest.fn(),
+};
+
 // グローバル chrome オブジェクトをセットアップ
 (global as unknown as { chrome: unknown }).chrome = {
   contextMenus: mockContextMenus,
   notifications: mockNotifications,
   storage: mockStorage,
   runtime: mockRuntime,
+  tabs: mockTabs,
 };
 
 // ── テスト用ヘルパー ──────────────────────────────────────────────────────────────
@@ -183,61 +191,92 @@ describe('Suite 1: テキスト選択 → コンテキストメニュー → 保
     jest.useRealTimers();
   });
 
-  it('テキスト選択後に保存操作を実行すると、Supabase readings テーブルにデータが記録される (Req 1.2, 2.1)', async () => {
+  it('テキスト選択後に保存操作を実行すると、showMemoInput メッセージが Content Script へ送信される (Req 1.2, 5.1)', async () => {
+    // タスク 10.2: ContextMenuHandler は直接 Supabase に INSERT せず
+    // chrome.tabs.sendMessage で showMemoInput メッセージを Content Script へ送信する
     expect(capturedClickListener).not.toBeNull();
 
-    // コンテキストメニューのクリックイベントをシミュレート
-    capturedClickListener!({
-      menuItemId: 'save-to-supabase',
-      selectionText: 'テスト選択テキスト',
-      pageUrl: 'https://example.com/blog/post',
-    });
+    // コンテキストメニューのクリックイベントをシミュレート（tab.id 付き）
+    capturedClickListener!(
+      {
+        menuItemId: 'save-to-supabase',
+        selectionText: 'テスト選択テキスト',
+        pageUrl: 'https://example.com/blog/post',
+      },
+      { id: 100 }
+    );
 
     await flushPromises();
 
-    // Supabase readings テーブルへの INSERT が正しいデータで実行されたことを確認
-    expect(mockFrom).toHaveBeenCalledWith('readings');
-    expect(mockInsert).toHaveBeenCalledWith(
+    // Supabase は直接呼ばれない（MemoInputUI → saveSelection のフローで実行）
+    expect(mockFrom).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+
+    // chrome.tabs.sendMessage で showMemoInput が正しいデータで送信されたことを確認
+    expect(mockTabs.sendMessage).toHaveBeenCalledWith(
+      100,
       expect.objectContaining({
-        selected_text: 'テスト選択テキスト',
-        page_url: 'https://example.com/blog/post',
+        type: 'showMemoInput',
+        payload: expect.objectContaining({
+          selectedText: 'テスト選択テキスト',
+          pageUrl: 'https://example.com/blog/post',
+        }),
       })
     );
   });
 
-  it('INSERT データには created_at（タイムスタンプ）が含まれる (Req 2.1)', async () => {
+  it('showMemoInput メッセージには selectedText と pageUrl が含まれる (Req 2.1, 5.1)', async () => {
+    // タスク 10.2: メッセージのペイロードに正しいフィールドが含まれることを確認
     expect(capturedClickListener).not.toBeNull();
 
-    capturedClickListener!({
-      menuItemId: 'save-to-supabase',
-      selectionText: 'タイムスタンプ確認テキスト',
-      pageUrl: 'https://example.com/article',
-    });
+    capturedClickListener!(
+      {
+        menuItemId: 'save-to-supabase',
+        selectionText: 'タイムスタンプ確認テキスト',
+        pageUrl: 'https://example.com/article',
+      },
+      { id: 101 }
+    );
 
     await flushPromises();
 
-    expect(mockInsert).toHaveBeenCalledWith(
+    expect(mockTabs.sendMessage).toHaveBeenCalledWith(
+      101,
       expect.objectContaining({
-        created_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
+        type: 'showMemoInput',
+        payload: expect.objectContaining({
+          selectedText: 'タイムスタンプ確認テキスト',
+          pageUrl: 'https://example.com/article',
+        }),
       })
     );
   });
 
-  it('保存成功時にユーザーへの成功通知が表示される (Req 1.3)', async () => {
+  it('コンテキストメニュークリック時に chrome.tabs.sendMessage が呼ばれる (Req 1.3, 5.1)', async () => {
+    // タスク 10.2: 保存成功通知は MemoInputUI 経由で実行されるため、
+    // ContextMenuHandler では showMemoInput 送信のみを確認する
     expect(capturedClickListener).not.toBeNull();
 
-    capturedClickListener!({
-      menuItemId: 'save-to-supabase',
-      selectionText: '保存対象テキスト',
-      pageUrl: 'https://example.com/page',
-    });
+    capturedClickListener!(
+      {
+        menuItemId: 'save-to-supabase',
+        selectionText: '保存対象テキスト',
+        pageUrl: 'https://example.com/page',
+      },
+      { id: 102 }
+    );
 
     await flushPromises();
 
-    // chrome.notifications.create が呼ばれたことを確認
-    expect(mockNotifications.create).toHaveBeenCalledTimes(1);
-    const [_notificationId, options] = mockNotifications.create.mock.calls[0];
-    expect(options.message).toContain('successfully');
+    // showMemoInput メッセージが送信されたことを確認
+    expect(mockTabs.sendMessage).toHaveBeenCalledTimes(1);
+    expect(mockTabs.sendMessage).toHaveBeenCalledWith(
+      102,
+      expect.objectContaining({ type: 'showMemoInput' })
+    );
+    // 直接 Supabase へ書き込まれない（通知も表示されない）
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockNotifications.create).not.toHaveBeenCalled();
   });
 
   it('「Save to Supabase」以外のメニューItemId は処理されない', async () => {
@@ -473,6 +512,7 @@ describe('Suite 3: エラーシナリオ', () => {
     jest.clearAllMocks();
     Object.keys(mockStorageData).forEach((k) => delete mockStorageData[k]);
     capturedClickListener = null;
+    capturedMessageListener = null;
     resetSupabaseMock();
   });
 
@@ -522,96 +562,99 @@ describe('Suite 3: エラーシナリオ', () => {
   });
 
   describe('認証情報未設定 (Req 2.3)', () => {
-    it('認証情報が未設定の場合、保存操作が失敗してエラー通知が表示される', async () => {
-      // 認証情報を設定しない（mockStorageData は空）
+    it('認証情報が未設定でも、ContextMenuHandler は showMemoInput を送信する（保存検証は MemoInputUI → MessageHandler フローで行われる）', async () => {
+      // タスク 10.2: ContextMenuHandler は認証情報をチェックしない。
+      // showMemoInput を送信するのみ。実際の認証情報チェックは
+      // MemoInputUI からの saveSelection メッセージを MessageHandler が処理する際に行われる (Req 2.3)
       new ContextMenuHandler();
       expect(capturedClickListener).not.toBeNull();
 
-      capturedClickListener!({
-        menuItemId: 'save-to-supabase',
-        selectionText: '認証情報なしのテキスト',
-        pageUrl: 'https://example.com',
-      });
+      capturedClickListener!(
+        {
+          menuItemId: 'save-to-supabase',
+          selectionText: '認証情報なしのテキスト',
+          pageUrl: 'https://example.com',
+        },
+        { id: 200 }
+      );
 
       await flushPromises();
 
-      // Supabase クライアントは呼ばれない（NO_CREDENTIALS エラー）
+      // Supabase クライアントは ContextMenuHandler から直接呼ばれない
       expect(mockFrom).not.toHaveBeenCalled();
-      // エラー通知が表示される
-      expect(mockNotifications.create).toHaveBeenCalledTimes(1);
-      const [_id, options] = mockNotifications.create.mock.calls[0];
-      expect(options.title).toContain('Failed');
+      // showMemoInput メッセージが送信される
+      expect(mockTabs.sendMessage).toHaveBeenCalledWith(
+        200,
+        expect.objectContaining({ type: 'showMemoInput' })
+      );
     });
   });
 
   describe('ネットワーク障害 (Req 2.2)', () => {
-    it('ネットワーク障害（3回失敗）後にエラー通知が表示される', async () => {
-      jest.useFakeTimers();
-
-      // Supabase insert が常にネットワークエラーを返すように設定
-      mockInsert.mockRejectedValue(new Error('fetch failed'));
-      mockFrom.mockReturnValue({ insert: mockInsert });
-      mockCreateClient.mockReturnValue({ from: mockFrom });
-
+    it('ネットワーク障害時でも ContextMenuHandler は showMemoInput を送信する（リトライは SupabaseWriter が担当）', async () => {
+      // タスク 10.2: ContextMenuHandler は Supabase を直接呼ばないため、
+      // ネットワーク障害の影響を受けない。ネットワークエラーとリトライは
+      // SupabaseWriter が担当し、MessageHandler 経由で呼ばれる (Req 2.2)
       setUpCredentials();
       new ContextMenuHandler();
       expect(capturedClickListener).not.toBeNull();
 
-      capturedClickListener!({
-        menuItemId: 'save-to-supabase',
-        selectionText: 'ネットワークエラーテスト',
-        pageUrl: 'https://example.com',
-      });
+      capturedClickListener!(
+        {
+          menuItemId: 'save-to-supabase',
+          selectionText: 'ネットワークエラーテスト',
+          pageUrl: 'https://example.com',
+        },
+        { id: 201 }
+      );
 
-      // 指数バックオフ（1s → 2s → 4s）をすべて進める
-      await jest.advanceTimersByTimeAsync(1000);
-      await jest.advanceTimersByTimeAsync(2000);
-      await jest.advanceTimersByTimeAsync(4000);
       await flushPromises();
 
-      // 3 回リトライが実行された確認
-      expect(mockInsert).toHaveBeenCalledTimes(3);
-      // エラー通知が表示される
-      expect(mockNotifications.create).toHaveBeenCalledTimes(1);
-      const [_id, options] = mockNotifications.create.mock.calls[0];
-      expect(options.title).toContain('Failed');
+      // ContextMenuHandler は Supabase を直接呼ばない
+      expect(mockInsert).not.toHaveBeenCalled();
+      // showMemoInput メッセージが正常に送信される
+      expect(mockTabs.sendMessage).toHaveBeenCalledWith(
+        201,
+        expect.objectContaining({ type: 'showMemoInput' })
+      );
     });
   });
 
   describe('無効な認証情報（AUTH_FAILED） (Req 3.5)', () => {
-    it('Supabase が 401 エラーを返した場合、AUTH_FAILED エラー通知が表示される', async () => {
-      // Supabase が 401 エラーを返すように設定
-      mockInsert.mockResolvedValue({
-        data: null,
-        error: { code: '401', message: 'Invalid API key', status: 401 },
-      });
-      mockFrom.mockReturnValue({ insert: mockInsert });
-      mockCreateClient.mockReturnValue({ from: mockFrom });
-
+    it('認証情報が設定されていても ContextMenuHandler は showMemoInput を送信する（認証検証は MessageHandler フローで行われる）', async () => {
+      // タスク 10.2: ContextMenuHandler は認証情報の有効性をチェックしない。
+      // AUTH_FAILED エラーは MessageHandler が saveSelection を処理する際に SupabaseWriter から返される (Req 3.5)
       setUpCredentials();
       new ContextMenuHandler();
       expect(capturedClickListener).not.toBeNull();
 
-      capturedClickListener!({
-        menuItemId: 'save-to-supabase',
-        selectionText: '認証エラーテスト',
-        pageUrl: 'https://example.com',
-      });
+      capturedClickListener!(
+        {
+          menuItemId: 'save-to-supabase',
+          selectionText: '認証エラーテスト',
+          pageUrl: 'https://example.com',
+        },
+        { id: 202 }
+      );
 
       await flushPromises();
 
-      // エラー通知が表示される
-      expect(mockNotifications.create).toHaveBeenCalledTimes(1);
-      const [_id, options] = mockNotifications.create.mock.calls[0];
-      expect(options.title).toContain('Failed');
-      // AUTH_FAILED メッセージには認証情報の再確認を促す内容が含まれる
-      expect(options.message).toContain('認証エラー');
+      // Supabase INSERT は直接実行されない
+      expect(mockInsert).not.toHaveBeenCalled();
+      // showMemoInput メッセージが送信される
+      expect(mockTabs.sendMessage).toHaveBeenCalledWith(
+        202,
+        expect.objectContaining({ type: 'showMemoInput' })
+      );
     });
   });
 
   describe('データベースエラー (Req 2.2)', () => {
-    it('RLS ポリシーにより拒否された場合、DB_ERROR エラー通知が表示される', async () => {
-      // Supabase が RLS エラーを返すように設定（42501 = permission denied）
+    it('ContextMenuHandler は showMemoInput を送信するのみで、DB エラーは SupabaseWriter が処理する', async () => {
+      // タスク 10.2: ContextMenuHandler は直接 Supabase を呼ばないため DB エラーの影響を受けない。
+      // DB エラー（RLS ポリシー違反など）は SupabaseWriter.save() が返す SaveResult で通知される (Req 2.2)
+
+      // SupabaseWriter が RLS エラーを返すように設定（ContextMenuHandler には影響しない）
       mockInsert.mockResolvedValue({
         data: null,
         error: {
@@ -627,18 +670,24 @@ describe('Suite 3: エラーシナリオ', () => {
       new ContextMenuHandler();
       expect(capturedClickListener).not.toBeNull();
 
-      capturedClickListener!({
-        menuItemId: 'save-to-supabase',
-        selectionText: 'RLSエラーテスト',
-        pageUrl: 'https://example.com',
-      });
+      capturedClickListener!(
+        {
+          menuItemId: 'save-to-supabase',
+          selectionText: 'RLSエラーテスト',
+          pageUrl: 'https://example.com',
+        },
+        { id: 203 }
+      );
 
       await flushPromises();
 
-      expect(mockNotifications.create).toHaveBeenCalledTimes(1);
-      const [_id, options] = mockNotifications.create.mock.calls[0];
-      expect(options.title).toContain('Failed');
-      expect(options.message).toContain('データベースエラー');
+      // ContextMenuHandler は Supabase を直接呼ばない（DB エラーに影響されない）
+      expect(mockInsert).not.toHaveBeenCalled();
+      // showMemoInput メッセージは正常に送信される
+      expect(mockTabs.sendMessage).toHaveBeenCalledWith(
+        203,
+        expect.objectContaining({ type: 'showMemoInput' })
+      );
     });
   });
 });

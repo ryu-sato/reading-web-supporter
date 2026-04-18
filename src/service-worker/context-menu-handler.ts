@@ -1,16 +1,13 @@
 /**
  * ContextMenuHandler: Chrome コンテキストメニュー統合
  * タスク 2.4: 保存操作用のコンテキストメニューハンドラーを構築
+ * タスク 10.2: showMemoInput メッセージ送信対応
  *
- * Requirements: 1.1, 1.3, 1.4
+ * Requirements: 1.1, 1.3, 1.4, 5.1
  * - chrome.contextMenus.create() でメニュー登録
- * - onClicked イベントで保存操作を実行
+ * - onClicked イベントで showMemoInput メッセージを Content Script へ送信
  * - テキスト未選択時にエラー通知
- * - 保存成功/失敗を chrome.notifications でユーザーに通知
  */
-
-import { SupabaseWriter } from './supabase-writer';
-import type { SaveTextOptions } from '../types/types';
 
 /** コンテキストメニューの ID */
 const MENU_ITEM_ID = 'save-to-supabase';
@@ -57,24 +54,25 @@ declare const chrome: {
   runtime: {
     getURL(path: string): string;
   };
+  tabs: {
+    sendMessage(tabId: number, message: unknown): void;
+  };
 };
 
 /**
  * Chrome コンテキストメニュー統合を管理するクラス
  *
  * Requirement 1.1: テキスト選択後、右クリックメニューに「Save to Supabase」を表示
- * Requirement 1.3: 保存完了/失敗をユーザーに通知
  * Requirement 1.4: テキスト未選択時にエラー通知を表示
+ * Requirement 5.1: onClicked イベントで showMemoInput メッセージを Content Script へ送信
  */
 export class ContextMenuHandler {
-  private readonly writer: SupabaseWriter;
   private readonly boundOnClicked: (
     info: chrome.contextMenus.OnClickData,
     tab?: chrome.tabs.Tab
   ) => void;
 
   constructor() {
-    this.writer = new SupabaseWriter();
     this.boundOnClicked = this.handleOnClicked.bind(this);
     chrome.contextMenus.onClicked.addListener(this.boundOnClicked);
   }
@@ -97,7 +95,7 @@ export class ContextMenuHandler {
    */
   private handleOnClicked(
     info: chrome.contextMenus.OnClickData,
-    _tab?: chrome.tabs.Tab
+    tab?: chrome.tabs.Tab
   ): void {
     // 対象のメニュー項目のみ処理する
     if (info.menuItemId !== MENU_ITEM_ID) {
@@ -105,45 +103,40 @@ export class ContextMenuHandler {
     }
 
     // 非同期処理を起動（Promise はハンドラー内でキャッチ済み）
-    this.processMenuClick(info).catch(() => {
+    this.processMenuClick(info, tab).catch(() => {
       // processMenuClick 内でエラーはすべてキャッチされているため、ここには到達しない
     });
   }
 
   /**
-   * メニュークリック後の非同期保存処理
+   * メニュークリック後の処理
    *
-   * info.selectionText を使うことで、サービスワーカー再起動による
-   * currentSelection 消失やメッセージ到達前のタイミング問題を回避する。
+   * Requirement 5.1: SupabaseWriter.save() を直接呼ばず、
+   * chrome.tabs.sendMessage で showMemoInput メッセージを Content Script へ送信する
    */
-  private async processMenuClick(info: chrome.contextMenus.OnClickData): Promise<void> {
+  private async processMenuClick(
+    info: chrome.contextMenus.OnClickData,
+    tab?: chrome.tabs.Tab
+  ): Promise<void> {
     const selectedText = info.selectionText ?? '';
     const pageUrl = info.pageUrl ?? '';
 
-    // テキスト未選択の場合はエラー通知を表示して終了
+    // テキスト未選択の場合はエラー通知を表示して終了 (Req 1.4)
     if (!selectedText) {
       this.showNotification('error', 'No text selected', 'No text selected. Please select text before saving.');
       return;
     }
 
-    const options: SaveTextOptions = {
-      selectedText,
-      pageUrl,
-      timestamp: new Date().toISOString(),
-    };
-
-    try {
-      const result = await this.writer.save(options);
-
-      if (result.success) {
-        this.showNotification('success', 'Saved to Supabase', 'Saved to Supabase successfully.');
-      } else {
-        const message = result.error?.message ?? 'Failed to save.';
-        this.showNotification('error', 'Save Failed', message);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.showNotification('error', 'Save Failed', `An unexpected error occurred: ${message}`);
+    // showMemoInput メッセージを Content Script へ送信 (Req 5.1)
+    const tabId = tab?.id;
+    if (tabId !== undefined) {
+      chrome.tabs.sendMessage(tabId, {
+        type: 'showMemoInput',
+        payload: {
+          selectedText,
+          pageUrl,
+        },
+      });
     }
   }
 

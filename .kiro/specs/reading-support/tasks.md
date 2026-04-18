@@ -234,7 +234,7 @@
   - _Boundary: Content Script Domain_
   - _Depends: 9.1_
 
-- [ ] 10.2 (P) ContextMenuHandler をメモ入力フロー対応に更新
+- [x] 10.2 (P) ContextMenuHandler をメモ入力フロー対応に更新
   - `onClicked` ハンドラで `SupabaseWriter.save()` を直接呼ぶ代わりに `chrome.tabs.sendMessage(tab.id, { type: 'showMemoInput', payload: { selectedText, pageUrl } })` を送信するよう変更
   - コンテキストメニュークリック時に MemoInputUI が起動しメモ入力ダイアログが表示されることを確認
   - SupabaseWriter の直接呼び出しが ContextMenuHandler から除去されている

@@ -1,22 +1,22 @@
 /**
  * ContextMenuHandler のユニットテスト
  * タスク 2.4: 保存操作用のコンテキストメニューハンドラーを構築
+ * タスク 10.2: showMemoInput メッセージ送信対応
  *
- * Requirements: 1.1, 1.3, 1.4
+ * Requirements: 1.1, 1.3, 1.4, 5.1
  * - chrome.contextMenus.create() でメニュー登録
- * - onClicked イベントで info.selectionText を使って保存操作を実行
- * - テキスト未選択時にエラー通知
- * - 保存成功/失敗を chrome.notifications でユーザーに通知
+ * - onClicked イベントで chrome.tabs.sendMessage({ type: 'showMemoInput', ... }) を送信
+ * - テキスト未選択時は chrome.tabs.sendMessage が呼ばれない
+ * - SupabaseWriter の直接呼び出しが除去されている
  */
 
 import { ContextMenuHandler } from './context-menu-handler';
-import type { SaveResult } from '../types/types';
 
 // ── chrome API モック ──────────────────────────────────────────────────────────
 
 type OnClickedListener = (
   info: { menuItemId: string; selectionText?: string; pageUrl: string; editable: boolean },
-  tab?: unknown
+  tab?: { id?: number }
 ) => void;
 
 const registeredOnClickedListeners: OnClickedListener[] = [];
@@ -24,6 +24,7 @@ const registeredOnClickedListeners: OnClickedListener[] = [];
 const mockContextMenusCreate = jest.fn();
 const mockContextMenusUpdate = jest.fn();
 const mockNotificationsCreate = jest.fn();
+const mockTabsSendMessage = jest.fn();
 
 const mockOnClicked = {
   addListener: jest.fn((listener: OnClickedListener) => {
@@ -47,11 +48,14 @@ const mockOnClicked = {
   runtime: {
     getURL: (path: string) => `chrome-extension://test-id/${path}`,
   },
+  tabs: {
+    sendMessage: mockTabsSendMessage,
+  },
 };
 
-// ── SupabaseWriter モック ──────────────────────────────────────────────────────
+// ── SupabaseWriter モック（使われないことを確認するため残す） ─────────────────
 
-const mockSave = jest.fn<Promise<SaveResult>, [unknown]>();
+const mockSave = jest.fn();
 
 jest.mock('./supabase-writer', () => ({
   SupabaseWriter: jest.fn().mockImplementation(() => ({
@@ -62,7 +66,8 @@ jest.mock('./supabase-writer', () => ({
 // ── ヘルパー: onClicked イベントを発火する ────────────────────────────────────
 
 function dispatchOnClicked(
-  info: { menuItemId?: string; selectionText?: string; pageUrl?: string } = {}
+  info: { menuItemId?: string; selectionText?: string; pageUrl?: string } = {},
+  tab: { id?: number } = { id: 42 }
 ): void {
   const fullInfo = {
     menuItemId: info.menuItemId ?? 'save-to-supabase',
@@ -72,7 +77,7 @@ function dispatchOnClicked(
   };
   const listener = registeredOnClickedListeners[registeredOnClickedListeners.length - 1];
   if (!listener) throw new Error('onClicked リスナーが登録されていません');
-  listener(fullInfo);
+  listener(fullInfo, tab);
 }
 
 // ── テストスイート ──────────────────────────────────────────────────────────────
@@ -93,10 +98,8 @@ describe('ContextMenuHandler', () => {
       expect(mockOnClicked.addListener).toHaveBeenCalledTimes(1);
     });
 
-    it('SupabaseWriter が初期化される', () => {
-      const { SupabaseWriter } = jest.requireMock('./supabase-writer');
+    it('ContextMenuHandler のインスタンスが生成される', () => {
       expect(handler).toBeInstanceOf(ContextMenuHandler);
-      expect(SupabaseWriter).toHaveBeenCalled();
     });
   });
 
@@ -124,17 +127,55 @@ describe('ContextMenuHandler', () => {
     });
   });
 
-  // ── onClicked: テキスト未選択 ───────────────────────────────────────────────
+  // ── onClicked: showMemoInput メッセージ送信（Req 5.1）────────────────────────
 
-  describe('onClicked - テキスト未選択の場合 (Req 1.4)', () => {
-    it('selectionText が空のとき SupabaseWriter.save() が呼ばれない', async () => {
-      dispatchOnClicked({ selectionText: '' });
+  describe('onClicked - showMemoInput メッセージ送信 (Req 5.1)', () => {
+    it('テキスト選択時に chrome.tabs.sendMessage が showMemoInput で呼ばれる', async () => {
+      dispatchOnClicked({ selectionText: '重要なテキスト', pageUrl: 'https://example.com/blog' }, { id: 42 });
       await Promise.resolve();
+
+      expect(mockTabsSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockTabsSendMessage).toHaveBeenCalledWith(42, {
+        type: 'showMemoInput',
+        payload: {
+          selectedText: '重要なテキスト',
+          pageUrl: 'https://example.com/blog',
+        },
+      });
+    });
+
+    it('SupabaseWriter.save() は直接呼ばれない (Req 5.1)', async () => {
+      dispatchOnClicked({ selectionText: '重要なテキスト' }, { id: 42 });
+      await Promise.resolve();
+
       expect(mockSave).not.toHaveBeenCalled();
     });
 
-    it('selectionText が未定義のとき SupabaseWriter.save() が呼ばれない', async () => {
+    it('tab.id が正しく sendMessage に渡される', async () => {
+      dispatchOnClicked({ selectionText: 'テキスト' }, { id: 99 });
+      await Promise.resolve();
+
+      expect(mockTabsSendMessage).toHaveBeenCalledWith(99, expect.objectContaining({ type: 'showMemoInput' }));
+    });
+  });
+
+  // ── onClicked: テキスト未選択 ───────────────────────────────────────────────
+
+  describe('onClicked - テキスト未選択の場合 (Req 1.4)', () => {
+    it('selectionText が空のとき chrome.tabs.sendMessage が呼ばれない', async () => {
+      dispatchOnClicked({ selectionText: '' });
+      await Promise.resolve();
+      expect(mockTabsSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('selectionText が未定義のとき chrome.tabs.sendMessage が呼ばれない', async () => {
       dispatchOnClicked({ selectionText: undefined });
+      await Promise.resolve();
+      expect(mockTabsSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('selectionText が空のとき SupabaseWriter.save() が呼ばれない', async () => {
+      dispatchOnClicked({ selectionText: '' });
       await Promise.resolve();
       expect(mockSave).not.toHaveBeenCalled();
     });
@@ -153,109 +194,6 @@ describe('ContextMenuHandler', () => {
     });
   });
 
-  // ── onClicked: 保存成功 ──────────────────────────────────────────────────────
-
-  describe('onClicked - 保存成功の場合 (Req 1.3)', () => {
-    beforeEach(() => {
-      mockSave.mockResolvedValue({
-        success: true,
-        data: { id: 'test-uuid', created_at: '2026-04-13T00:00:00.000Z' },
-      });
-    });
-
-    it('SupabaseWriter.save() が info.selectionText と info.pageUrl で呼ばれる (Req 1.3)', async () => {
-      dispatchOnClicked({
-        selectionText: '重要なテキスト',
-        pageUrl: 'https://example.com/blog',
-      });
-      await Promise.resolve();
-
-      expect(mockSave).toHaveBeenCalledTimes(1);
-      expect(mockSave).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selectedText: '重要なテキスト',
-          pageUrl: 'https://example.com/blog',
-          timestamp: expect.any(String),
-        })
-      );
-    });
-
-    it('"Saved to Supabase" 成功通知が表示される (Req 1.3)', async () => {
-      dispatchOnClicked({ selectionText: '重要なテキスト' });
-      await Promise.resolve();
-
-      expect(mockNotificationsCreate).toHaveBeenCalledTimes(1);
-      expect(mockNotificationsCreate).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          message: expect.stringContaining('Saved to Supabase'),
-        })
-      );
-    });
-  });
-
-  // ── onClicked: 保存失敗 ──────────────────────────────────────────────────────
-
-  describe('onClicked - 保存失敗の場合 (Req 1.3, 1.4)', () => {
-    it('エラーメッセージを含む通知が表示される (Req 1.3)', async () => {
-      const errorMessage = 'Supabase認証情報が設定されていません。';
-      mockSave.mockResolvedValue({
-        success: false,
-        error: {
-          code: 'NO_CREDENTIALS',
-          message: errorMessage,
-          recoveryHint: '設定画面でProject URLとAnon Keyを入力してください。',
-        },
-      });
-
-      dispatchOnClicked({ selectionText: 'エラーになるテキスト' });
-      await Promise.resolve();
-
-      expect(mockNotificationsCreate).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          message: expect.stringContaining(errorMessage),
-        })
-      );
-    });
-
-    it('NETWORK_ERROR の場合もエラー通知が表示される', async () => {
-      mockSave.mockResolvedValue({
-        success: false,
-        error: {
-          code: 'NETWORK_ERROR',
-          message: 'ネットワークエラーが発生しました。',
-          recoveryHint: 'インターネット接続を確認してください。',
-        },
-      });
-
-      dispatchOnClicked({ selectionText: 'テキスト' });
-      await Promise.resolve();
-
-      expect(mockNotificationsCreate).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          message: expect.stringContaining('ネットワークエラーが発生しました。'),
-        })
-      );
-    });
-
-    it('save() が例外をスローした場合もエラー通知が表示される', async () => {
-      mockSave.mockRejectedValue(new Error('予期しない例外'));
-
-      dispatchOnClicked({ selectionText: 'テキスト' });
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(mockNotificationsCreate).toHaveBeenCalledTimes(1);
-      expect(mockNotificationsCreate).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          message: expect.any(String),
-        })
-      );
-    });
-  });
-
   // ── onClicked: 別のメニュー項目 ─────────────────────────────────────────────
 
   describe('onClicked - 別のメニュー項目の場合', () => {
@@ -263,6 +201,7 @@ describe('ContextMenuHandler', () => {
       dispatchOnClicked({ menuItemId: 'other-menu-item', selectionText: 'テキスト' });
       await Promise.resolve();
 
+      expect(mockTabsSendMessage).not.toHaveBeenCalled();
       expect(mockSave).not.toHaveBeenCalled();
       expect(mockNotificationsCreate).not.toHaveBeenCalled();
     });
@@ -292,10 +231,10 @@ describe('ContextMenuHandler', () => {
     });
   });
 
-  // ── 通知の構造 ──────────────────────────────────────────────────────────────
+  // ── 通知の構造（テキスト未選択時） ─────────────────────────────────────────
 
   describe('通知の構造', () => {
-    it('通知には type, iconUrl, title, message が含まれる', async () => {
+    it('通知には type, iconUrl, title, message が含まれる（テキスト未選択時）', async () => {
       dispatchOnClicked({ selectionText: '' });
       await Promise.resolve();
 
