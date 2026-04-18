@@ -822,3 +822,233 @@ describe('Suite 4: テキスト選択状態の伝播フロー', () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Suite 5: メモ機能のエンドツーエンドテスト
+// Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('Suite 5: メモ機能 E2E フロー', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Object.keys(mockStorageData).forEach((k) => delete mockStorageData[k]);
+    capturedMessageListener = null;
+    resetSupabaseMock();
+
+    // 認証情報を事前に設定
+    setUpCredentials();
+
+    // 実際のコンポーネントを生成（MessageHandler が onMessage リスナーを登録する）
+    const settingsManager = new SettingsManager();
+    const supabaseWriter = new SupabaseWriter();
+    new MessageHandler(settingsManager, supabaseWriter);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  describe('saveSelection with memo → Supabase INSERT (Req 5.2)', () => {
+    it('memo を含む saveSelection メッセージを受信すると、SupabaseWriter が memo 付きで INSERT を呼ぶ', async () => {
+      // タスク 12.2: MemoInputUI から saveSelection メッセージが SW へ送信されたフローを再現
+      expect(capturedMessageListener).not.toBeNull();
+
+      const sendResponse = jest.fn();
+      capturedMessageListener!(
+        {
+          type: 'saveSelection',
+          payload: {
+            selectedText: 'メモ付きテスト選択テキスト',
+            pageUrl: 'https://example.com/article',
+            timestamp: '2026-04-18T00:00:00.000Z',
+            memo: 'テストメモ内容',
+          },
+        },
+        {},
+        sendResponse
+      );
+
+      await flushPromises();
+
+      // SupabaseWriter.save() が memo を含むレコードで INSERT を呼んだことを確認
+      expect(mockFrom).toHaveBeenCalledWith('readings');
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selected_text: 'メモ付きテスト選択テキスト',
+          page_url: 'https://example.com/article',
+          memo: 'テストメモ内容',
+        })
+      );
+
+      // 保存成功レスポンスが返ることを確認
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+  });
+
+  describe('saveSelection without memo → Supabase INSERT with memo = null (Req 5.3)', () => {
+    it('memo なしの saveSelection メッセージを受信すると、SupabaseWriter が memo = null で INSERT を呼ぶ', async () => {
+      // タスク 12.2: メモ未入力のまま Save した場合、DB に memo = NULL が挿入される
+      expect(capturedMessageListener).not.toBeNull();
+
+      const sendResponse = jest.fn();
+      capturedMessageListener!(
+        {
+          type: 'saveSelection',
+          payload: {
+            selectedText: 'メモなしテスト選択テキスト',
+            pageUrl: 'https://example.com/article',
+            timestamp: '2026-04-18T00:00:00.000Z',
+            // memo フィールドを省略（undefined → null として INSERT される）
+          },
+        },
+        {},
+        sendResponse
+      );
+
+      await flushPromises();
+
+      // SupabaseWriter.save() が memo = null で INSERT を呼んだことを確認
+      expect(mockFrom).toHaveBeenCalledWith('readings');
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selected_text: 'メモなしテスト選択テキスト',
+          page_url: 'https://example.com/article',
+          memo: null,
+        })
+      );
+
+      // 保存成功レスポンスが返ることを確認
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+  });
+
+  describe('Cancel フロー → Supabase INSERT が呼ばれない (Req 5.1, 5.3)', () => {
+    it('Cancel によって saveSelection が送信されない場合、Supabase INSERT は実行されない', async () => {
+      // タスク 12.2: MemoInputUI の Cancel ボタン押下時は saveSelection を送信しない
+      // → Service Worker への saveSelection メッセージが届かないため INSERT は実行されない
+      expect(capturedMessageListener).not.toBeNull();
+
+      // Cancel シミュレート: saveSelection を送信しない（何もしない）
+      // 代わりに textSelectionUpdated だけ送信してキャンセルを再現
+      capturedMessageListener!(
+        {
+          type: 'textSelectionUpdated',
+          payload: {
+            selectedText: 'キャンセル対象テキスト',
+            pageUrl: 'https://example.com/article',
+            hasSelection: true,
+          },
+        },
+        {},
+        jest.fn()
+      );
+
+      await flushPromises();
+
+      // saveSelection が送信されていないため INSERT は呼ばれない
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockFrom).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getHighlights → memo 付きハイライトデータの取得 (Req 5.4)', () => {
+    it('getHighlights メッセージを受信すると、SupabaseReader が SELECT を呼び memo 付きの highlights を返す', async () => {
+      // タスク 12.2: HighlightController から getHighlights メッセージが送信されたフローを再現
+      // Supabase の select チェーンをモックして memo 付きデータを返す
+      const mockEq = jest.fn().mockResolvedValue({
+        data: [
+          { selected_text: 'ハイライトテキスト', memo: 'ハイライトメモ' },
+        ],
+        error: null,
+      });
+      const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ select: mockSelect });
+
+      expect(capturedMessageListener).not.toBeNull();
+
+      const sendResponse = jest.fn();
+      capturedMessageListener!(
+        {
+          type: 'getHighlights',
+          payload: { pageUrl: 'https://example.com/article' },
+        },
+        {},
+        sendResponse
+      );
+
+      await flushPromises();
+
+      // SupabaseReader が SELECT を呼んだことを確認
+      expect(mockFrom).toHaveBeenCalledWith('readings');
+      expect(mockSelect).toHaveBeenCalledWith('selected_text, memo');
+      expect(mockEq).toHaveBeenCalledWith('page_url', 'https://example.com/article');
+
+      // レスポンスに memo 付きの highlights が含まれることを確認（Req 5.4）
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          highlights: expect.arrayContaining([
+            expect.objectContaining({
+              text: 'ハイライトテキスト',
+              memo: 'ハイライトメモ',
+            }),
+          ]),
+        })
+      );
+    });
+  });
+
+  describe('getHighlights → memo なしのハイライトデータ (Req 5.5)', () => {
+    it('memo = null のレコードは highlights 内で memo が undefined となる', async () => {
+      // タスク 12.2: memo が NULL のレコードに対して HighlightController は
+      // ツールチップを表示しない（SavedHighlight.memo = undefined）
+      const mockEq = jest.fn().mockResolvedValue({
+        data: [
+          { selected_text: 'メモなしハイライト', memo: null },
+        ],
+        error: null,
+      });
+      const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ select: mockSelect });
+
+      expect(capturedMessageListener).not.toBeNull();
+
+      const sendResponse = jest.fn();
+      capturedMessageListener!(
+        {
+          type: 'getHighlights',
+          payload: { pageUrl: 'https://example.com/memo-null-page' },
+        },
+        {},
+        sendResponse
+      );
+
+      await flushPromises();
+
+      // レスポンスに highlights が含まれ、memo が undefined であることを確認（Req 5.5）
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          highlights: [
+            {
+              text: 'メモなしハイライト',
+              // memo プロパティは undefined（NULL → undefined 変換）なので
+              // expect.objectContaining({ text: ... }) だけで確認する
+            },
+          ],
+        })
+      );
+
+      // memo が undefined になっていることを個別確認
+      const response = sendResponse.mock.calls[0][0] as { success: boolean; highlights: Array<{ text: string; memo?: string }> };
+      expect(response.success).toBe(true);
+      expect(response.highlights).toHaveLength(1);
+      expect(response.highlights[0].text).toBe('メモなしハイライト');
+      expect(response.highlights[0].memo).toBeUndefined();
+    });
+  });
+});
