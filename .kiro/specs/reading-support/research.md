@@ -156,3 +156,35 @@ const { data, error } = await supabase
 ### Key Architecture Decision: RLS SELECT ポリシー必要
 - 要件4（ハイライト取得）の追加により、Supabase の anon role に SELECT 権限が必要。
 - これはユーザーが RLS ポリシーを更新する必要があることを意味し、設計ドキュメントに明記した。
+
+## Design Synthesis (Requirement 6 追加: メモ編集・削除機能)
+
+### Architecture Decision: HighlightActionPopup を Content Script に配置
+- クリック時のポップアップ表示はDOM操作が必要なため Content Script に追加
+- MemoInputUI と同パターン（Shadow DOM + vanilla JS）でページスタイルと分離
+- HighlightController がクリックイベントを検知して HighlightActionPopup を制御（親子関係）
+- 編集・削除操作は HighlightActionPopup → MessageHandler（SW）→ SupabaseWriter の経路で実行
+
+### Generalization: HighlightActionPopup のVIEW/EDIT 2ステート
+- 「ハイライトクリック時のポップアップ」と「メモ編集フォーム」は1コンポーネントで管理
+- 別コンポーネントにすると ContextMenuHandler との関係が複雑化するため、ステート管理で対応
+
+### Interface Change: SavedHighlight に id を追加
+- `SavedHighlight: { id: string; text: string; memo?: string }` — id を追加
+- SupabaseReader のクエリに `id` カラムを追加（ブレイキングチェンジ）
+- HighlightController は `<mark>` 要素の `data-record-id` 属性に id を設定
+- HighlightActionPopup が UPDATE/DELETE 操作のために id を使用
+
+### Data Model: Supabase RLS に UPDATE/DELETE ポリシーを追加
+- 要件6（編集・削除）の追加により anon role に UPDATE・DELETE 権限が必要
+- 新規ユーザー向けSQL に UPDATE/DELETE ポリシーを追記
+- 既存ユーザーは `CREATE POLICY` で UPDATE/DELETE ポリシーを追加する必要あり
+
+### XSS 対策: HighlightActionPopup のメモ表示
+- VIEW 状態でのメモ表示は `element.textContent` のみ使用（innerHTML 不使用）
+- EDIT 状態での textarea 値は `textarea.value = memo` で設定（innerHTML 不使用）
+- 削除確認テキストもすべて textContent で設定
+
+### Build vs Adopt
+- 削除確認ダイアログ: ブラウザネイティブ `confirm()` は使用しない（Shadow DOM 内で独自実装）
+  理由: `confirm()` は拡張機能コンテキストでの動作が不安定なケースがある
