@@ -271,7 +271,7 @@
 
 ## 11. メモ機能統合
 
-- [ ] 11.1 保存フロー全体を接続して動作確認
+- [x] 11.1 保存フロー全体を接続して動作確認
   - Content Script エントリポイントに `MemoInputUI` のインスタンスを作成・初期化
   - 完全なフローを確認：コンテキストメニュークリック → `showMemoInput` → MemoInputUI ダイアログ表示 → Save → `saveSelection`（memo含む） → MessageHandler → SupabaseWriter → Supabase INSERT
   - memo を入力して保存 → Supabase レコードに memo 値が格納されることを確認

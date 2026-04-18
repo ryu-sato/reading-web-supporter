@@ -11,6 +11,7 @@
 
 import { initTextSelector } from './text-selector';
 import { HighlightController } from './highlight-controller';
+import { initMemoInputUI } from './memo-input-ui';
 
 /**
  * Content Script メインロジック
@@ -25,6 +26,9 @@ function initializeContentScript(): void {
 
   // 2. HighlightController をインスタンス化（DOMContentLoaded 後に保存済みテキストを取得・ハイライト）
   new HighlightController();
+
+  // 3. MemoInputUI を初期化（showMemoInput メッセージのリスナーを登録）
+  initMemoInputUI();
 }
 
 // Content Script として実行された場合に初期化
