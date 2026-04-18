@@ -14,7 +14,7 @@
  */
 
 import { MessageHandler } from './message-handler';
-import type { TextSelectionMessage, ExtensionMessage } from '../types/types';
+import type { TextSelectionMessage, ExtensionMessage, HighlightsResponse } from '../types/types';
 
 // chrome.runtime.onMessage のモック
 type MessageListener = (
@@ -47,9 +47,11 @@ const mockSender: Record<string, unknown> = {};
 // SettingsManager モック
 const mockGetCredentials = jest.fn();
 const mockSetCredentials = jest.fn();
+const mockIsConfigured = jest.fn();
 const mockSettingsManager = {
   getCredentials: mockGetCredentials,
   setCredentials: mockSetCredentials,
+  isConfigured: mockIsConfigured,
 };
 
 // SupabaseWriter モック
@@ -58,6 +60,12 @@ const mockSave = jest.fn();
 const mockSupabaseWriter = {
   testConnection: mockTestConnection,
   save: mockSave,
+};
+
+// SupabaseReader モック
+const mockFetchSavedTexts = jest.fn();
+const mockSupabaseReader = {
+  fetchSavedTexts: mockFetchSavedTexts,
 };
 
 /**
@@ -484,6 +492,121 @@ describe('MessageHandler', () => {
 
       await new Promise((r) => setTimeout(r, 0));
       expect(sendResponse).toHaveBeenCalledWith({ success: false, message: '接続に失敗しました' });
+    });
+  });
+
+  // ── getHighlights メッセージハンドラー (Req 4.1〜4.6) ────────────────────────
+
+  describe('getHighlights メッセージの処理 (Req 4.1, 4.3)', () => {
+    let handlerWithReader: MessageHandler;
+
+    function dispatchMessageWithReader(
+      message: ExtensionMessage,
+      sendResponse: (response?: unknown) => void = jest.fn()
+    ): boolean | void {
+      const listener = registeredListeners[registeredListeners.length - 1];
+      if (!listener) throw new Error('リスナーが登録されていません');
+      return listener(message, mockSender, sendResponse);
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      registeredListeners.length = 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handlerWithReader = new MessageHandler(mockSettingsManager as any, mockSupabaseWriter as any, mockSupabaseReader as any);
+      void handlerWithReader; // suppress unused warning
+    });
+
+    it('getHighlights メッセージで SupabaseReader.fetchSavedTexts() が呼ばれ SavedHighlight[] を含む HighlightsResponse が返される', async () => {
+      const highlights = [
+        { text: '重要な文章', memo: 'このメモが重要' },
+        { text: '別の文章' },
+      ];
+      const response: HighlightsResponse = { success: true, highlights };
+      mockFetchSavedTexts.mockResolvedValue(response);
+
+      const sendResponse = jest.fn();
+      const result = dispatchMessageWithReader(
+        { type: 'getHighlights', payload: { pageUrl: 'https://example.com/page' } },
+        sendResponse
+      );
+      expect(result).toBe(true); // 非同期レスポンスチャネルを維持
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockFetchSavedTexts).toHaveBeenCalledWith({ pageUrl: 'https://example.com/page' });
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          highlights: expect.arrayContaining([
+            expect.objectContaining({ text: '重要な文章', memo: 'このメモが重要' }),
+            expect.objectContaining({ text: '別の文章' }),
+          ]),
+        })
+      );
+    });
+
+    it('getHighlights でエラーが発生した場合、エラーレスポンスが返される', async () => {
+      const errorResponse: HighlightsResponse = {
+        success: false,
+        error: { code: 'AUTH_FAILED', message: '認証エラー' },
+      };
+      mockFetchSavedTexts.mockResolvedValue(errorResponse);
+
+      const sendResponse = jest.fn();
+      dispatchMessageWithReader(
+        { type: 'getHighlights', payload: { pageUrl: 'https://example.com/page' } },
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, error: expect.objectContaining({ code: 'AUTH_FAILED' }) })
+      );
+    });
+  });
+
+  // ── isConfigured メッセージハンドラー (Req 4.6) ───────────────────────────────
+
+  describe('isConfigured メッセージの処理 (Req 4.6)', () => {
+    let handlerWithReader: MessageHandler;
+
+    function dispatchMessageWithReader(
+      message: ExtensionMessage,
+      sendResponse: (response?: unknown) => void = jest.fn()
+    ): boolean | void {
+      const listener = registeredListeners[registeredListeners.length - 1];
+      if (!listener) throw new Error('リスナーが登録されていません');
+      return listener(message, mockSender, sendResponse);
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      registeredListeners.length = 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handlerWithReader = new MessageHandler(mockSettingsManager as any, mockSupabaseWriter as any, mockSupabaseReader as any);
+      void handlerWithReader;
+    });
+
+    it('認証情報が設定済みの場合、{ configured: true } が返される', async () => {
+      mockIsConfigured.mockResolvedValue(true);
+
+      const sendResponse = jest.fn();
+      const result = dispatchMessageWithReader({ type: 'isConfigured' }, sendResponse);
+      expect(result).toBe(true);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockIsConfigured).toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledWith({ configured: true });
+    });
+
+    it('認証情報が未設定の場合、{ configured: false } が返される', async () => {
+      mockIsConfigured.mockResolvedValue(false);
+
+      const sendResponse = jest.fn();
+      dispatchMessageWithReader({ type: 'isConfigured' }, sendResponse);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith({ configured: false });
     });
   });
 });

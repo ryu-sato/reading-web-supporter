@@ -279,7 +279,7 @@
   - _Requirements: 5.1, 5.2, 5.3_
   - _Depends: 10.1, 10.2, 10.3_
 
-- [ ] 11.2 ハイライト＋ツールチップフローを接続して動作確認
+- [x] 11.2 ハイライト＋ツールチップフローを接続して動作確認
   - MessageHandler の `getHighlights` レスポンスが `SavedHighlight[]` を返すことを確認（SupabaseReader 変更の伝播）
   - HighlightController が `highlights` フィールドを正しく読み取ることを確認
   - memo ありのレコードを保存済みのページを開き `<mark>` 要素へのホバーでツールチップが表示されることを確認
