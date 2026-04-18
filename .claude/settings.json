@@ -1,13 +1,17 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "language": "japanese",
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "permissions": {
     "allow": [
       "Bash",
       "Read",
       "Write",
       "WebFetch",
-      "WebSearch"
+      "WebSearch",
+      "Skill(kiro-*)"
     ],
     "deny": [
       "Write(.claude/rules/*)",
@@ -31,6 +35,7 @@
   "enabledPlugins": {
     "tsumiki@tsumiki": true
   },
+  "language": "japanese",
   "sandbox": {
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
@@ -41,9 +46,5 @@
     "paths": [
       ".claude/skills"
     ]
-  },
-  "attribution": {
-    "commit": "",
-    "pr": ""
   }
 }
