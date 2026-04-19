@@ -33,7 +33,6 @@
     "defaultMode": "acceptEdits"
   },
   "enabledPlugins": {
-    "tsumiki@tsumiki": true
   },
   "language": "japanese",
   "sandbox": {
