@@ -84,7 +84,7 @@ export class ContextMenuHandler {
   register(): void {
     chrome.contextMenus.create({
       id: MENU_ITEM_ID,
-      title: 'Save to Supabase',
+      title: 'ハイライトしてメモを保存',
       contexts: ['selection'],
       documentUrlPatterns: ['<all_urls>'],
     });

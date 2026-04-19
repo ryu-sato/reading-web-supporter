@@ -113,7 +113,7 @@ describe('ContextMenuHandler', () => {
       expect(mockContextMenusCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'save-to-supabase',
-          title: 'Save to Supabase',
+          title: 'ハイライトしてメモを保存',
           contexts: ['selection'],
           documentUrlPatterns: ['<all_urls>'],
         })

@@ -139,8 +139,10 @@ export interface GetHighlightsMessage {
 /**
  * 保存済みハイライト（テキストとオプションのメモを含む）
  * Requirement 5.3, 5.4: メモ付きでハイライトを保存・取得する
+ * Requirement 6.1: 編集・削除操作のレコード識別子として id を使用
  */
 export interface SavedHighlight {
+  id: string;     // レコードの一意識別子（編集・削除操作に使用）
   text: string;   // ハイライトされたテキスト
   memo?: string;  // ハイライトに付随するメモ（任意）
 }
@@ -172,6 +174,55 @@ export interface ShowMemoInputMessage {
 }
 
 /**
+ * 保存済みメモの更新メッセージ
+ * Requirement 6.3: メモ編集を保存してSupabaseへ反映する
+ */
+export interface UpdateMemoMessage {
+  type: 'updateMemo';
+  payload: {
+    id: string;    // 更新するレコードの識別子
+    memo: string;  // 新しいメモ内容
+  };
+}
+
+/**
+ * ハイライトの削除メッセージ
+ * Requirement 6.4: ハイライトを削除してSupabaseから除去する
+ */
+export interface DeleteHighlightMessage {
+  type: 'deleteHighlight';
+  payload: {
+    id: string;  // 削除するレコードの識別子
+  };
+}
+
+/**
+ * メモ更新操作の結果
+ * Requirement 6.3, 6.5: 更新成功/失敗の結果
+ */
+export interface UpdateResult {
+  success: boolean;
+  error?: {
+    code: 'NO_CREDENTIALS' | 'AUTH_FAILED' | 'NETWORK_ERROR' | 'DB_ERROR' | 'UNKNOWN';
+    message: string;
+    recoveryHint: string;
+  };
+}
+
+/**
+ * ハイライト削除操作の結果
+ * Requirement 6.4, 6.5: 削除成功/失敗の結果
+ */
+export interface DeleteResult {
+  success: boolean;
+  error?: {
+    code: 'NO_CREDENTIALS' | 'AUTH_FAILED' | 'NETWORK_ERROR' | 'DB_ERROR' | 'UNKNOWN';
+    message: string;
+    recoveryHint: string;
+  };
+}
+
+/**
  * Chrome Runtime メッセージの共用体型
  */
 export type ExtensionMessage =
@@ -183,4 +234,6 @@ export type ExtensionMessage =
   | { type: 'testConnection' }
   | { type: 'isConfigured' }
   | GetHighlightsMessage
-  | ShowMemoInputMessage;
+  | ShowMemoInputMessage
+  | UpdateMemoMessage
+  | DeleteHighlightMessage;

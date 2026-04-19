@@ -57,9 +57,13 @@ const mockSettingsManager = {
 // SupabaseWriter モック
 const mockTestConnection = jest.fn();
 const mockSave = jest.fn();
+const mockUpdateMemo = jest.fn();
+const mockDeleteRecord = jest.fn();
 const mockSupabaseWriter = {
   testConnection: mockTestConnection,
   save: mockSave,
+  updateMemo: mockUpdateMemo,
+  deleteRecord: mockDeleteRecord,
 };
 
 // SupabaseReader モック
@@ -519,8 +523,8 @@ describe('MessageHandler', () => {
 
     it('getHighlights メッセージで SupabaseReader.fetchSavedTexts() が呼ばれ SavedHighlight[] を含む HighlightsResponse が返される', async () => {
       const highlights = [
-        { text: '重要な文章', memo: 'このメモが重要' },
-        { text: '別の文章' },
+        { id: 'rec-1', text: '重要な文章', memo: 'このメモが重要' },
+        { id: 'rec-2', text: '別の文章' },
       ];
       const response: HighlightsResponse = { success: true, highlights };
       mockFetchSavedTexts.mockResolvedValue(response);
@@ -607,6 +611,118 @@ describe('MessageHandler', () => {
 
       await new Promise((r) => setTimeout(r, 0));
       expect(sendResponse).toHaveBeenCalledWith({ configured: false });
+    });
+  });
+
+  // ── updateMemo メッセージハンドラー (Req 6.3) ────────────────────────────────
+
+  describe('updateMemo メッセージの処理 (Req 6.3)', () => {
+    let handlerForUpdate: MessageHandler;
+
+    function dispatchUpdateMessage(
+      message: ExtensionMessage,
+      sendResponse: (response?: unknown) => void = jest.fn()
+    ): boolean | void {
+      const listener = registeredListeners[registeredListeners.length - 1];
+      if (!listener) throw new Error('リスナーが登録されていません');
+      return listener(message, mockSender, sendResponse);
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      registeredListeners.length = 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handlerForUpdate = new MessageHandler(mockSettingsManager as any, mockSupabaseWriter as any, mockSupabaseReader as any);
+      void handlerForUpdate;
+    });
+
+    it('updateMemo メッセージで SupabaseWriter.updateMemo() が呼ばれる (Req 6.3)', async () => {
+      mockUpdateMemo.mockResolvedValue({ success: true });
+
+      const sendResponse = jest.fn();
+      const result = dispatchUpdateMessage(
+        { type: 'updateMemo', payload: { id: 'rec-1', memo: '新しいメモ' } },
+        sendResponse
+      );
+      expect(result).toBe(true);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockUpdateMemo).toHaveBeenCalledWith('rec-1', '新しいメモ');
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    it('updateMemo 失敗時もエラーレスポンスが返される (Req 6.5)', async () => {
+      mockUpdateMemo.mockResolvedValue({
+        success: false,
+        error: { code: 'NETWORK_ERROR', message: '更新エラー', recoveryHint: '再試行' },
+      });
+
+      const sendResponse = jest.fn();
+      dispatchUpdateMessage(
+        { type: 'updateMemo', payload: { id: 'rec-1', memo: 'メモ' } },
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
+    });
+  });
+
+  // ── deleteHighlight メッセージハンドラー (Req 6.4) ───────────────────────────
+
+  describe('deleteHighlight メッセージの処理 (Req 6.4)', () => {
+    let handlerForDelete: MessageHandler;
+
+    function dispatchDeleteMessage(
+      message: ExtensionMessage,
+      sendResponse: (response?: unknown) => void = jest.fn()
+    ): boolean | void {
+      const listener = registeredListeners[registeredListeners.length - 1];
+      if (!listener) throw new Error('リスナーが登録されていません');
+      return listener(message, mockSender, sendResponse);
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      registeredListeners.length = 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handlerForDelete = new MessageHandler(mockSettingsManager as any, mockSupabaseWriter as any, mockSupabaseReader as any);
+      void handlerForDelete;
+    });
+
+    it('deleteHighlight メッセージで SupabaseWriter.deleteRecord() が呼ばれる (Req 6.4)', async () => {
+      mockDeleteRecord.mockResolvedValue({ success: true });
+
+      const sendResponse = jest.fn();
+      const result = dispatchDeleteMessage(
+        { type: 'deleteHighlight', payload: { id: 'rec-1' } },
+        sendResponse
+      );
+      expect(result).toBe(true);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockDeleteRecord).toHaveBeenCalledWith('rec-1');
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    it('deleteHighlight 失敗時もエラーレスポンスが返される (Req 6.5)', async () => {
+      mockDeleteRecord.mockResolvedValue({
+        success: false,
+        error: { code: 'NETWORK_ERROR', message: '削除エラー', recoveryHint: '再試行' },
+      });
+
+      const sendResponse = jest.fn();
+      dispatchDeleteMessage(
+        { type: 'deleteHighlight', payload: { id: 'rec-1' } },
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false })
+      );
     });
   });
 });

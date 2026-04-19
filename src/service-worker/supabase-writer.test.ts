@@ -348,4 +348,120 @@ describe('SupabaseWriter', () => {
       );
     });
   });
+
+  // ─── updateMemo() ────────────────────────────────────────────────────
+
+  describe('updateMemo() (Req 6.3)', () => {
+    it('updateMemo() が成功時に success: true を返す (Req 6.3)', async () => {
+      const mockEq = jest.fn().mockResolvedValue({ data: null, error: null });
+      const mockUpdate = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ update: mockUpdate });
+
+      const resultPromise = writer.updateMemo('rec-1', '新しいメモ');
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('updateMemo() が readings テーブルの正しいレコードを UPDATE する (Req 6.3)', async () => {
+      const mockEq = jest.fn().mockResolvedValue({ data: null, error: null });
+      const mockUpdate = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ update: mockUpdate });
+
+      const resultPromise = writer.updateMemo('rec-1', '新しいメモ');
+      jest.runAllTimersAsync();
+      await resultPromise;
+
+      expect(mockFrom).toHaveBeenCalledWith('readings');
+      expect(mockUpdate).toHaveBeenCalledWith({ memo: '新しいメモ' });
+      expect(mockEq).toHaveBeenCalledWith('id', 'rec-1');
+    });
+
+    it('updateMemo() が認証情報未設定時に NO_CREDENTIALS を返す', async () => {
+      mockGetCredentials.mockResolvedValue(null);
+
+      const resultPromise = writer.updateMemo('rec-1', 'メモ');
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('NO_CREDENTIALS');
+    });
+
+    it('updateMemo() が DB エラー時に success: false を返す (Req 6.5)', async () => {
+      const mockEq = jest.fn().mockResolvedValue({
+        data: null,
+        error: { code: '42501', message: 'RLS エラー', status: 403 },
+      });
+      const mockUpdate = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ update: mockUpdate });
+
+      const resultPromise = writer.updateMemo('rec-1', 'メモ');
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('DB_ERROR');
+    });
+  });
+
+  // ─── deleteRecord() ────────────────────────────────────────────────
+
+  describe('deleteRecord() (Req 6.4)', () => {
+    it('deleteRecord() が成功時に success: true を返す (Req 6.4)', async () => {
+      const mockEq = jest.fn().mockResolvedValue({ data: null, error: null });
+      const mockDelete = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ delete: mockDelete });
+
+      const resultPromise = writer.deleteRecord('rec-1');
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('deleteRecord() が readings テーブルの正しいレコードを DELETE する (Req 6.4)', async () => {
+      const mockEq = jest.fn().mockResolvedValue({ data: null, error: null });
+      const mockDelete = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ delete: mockDelete });
+
+      const resultPromise = writer.deleteRecord('rec-1');
+      jest.runAllTimersAsync();
+      await resultPromise;
+
+      expect(mockFrom).toHaveBeenCalledWith('readings');
+      expect(mockDelete).toHaveBeenCalled();
+      expect(mockEq).toHaveBeenCalledWith('id', 'rec-1');
+    });
+
+    it('deleteRecord() が認証情報未設定時に NO_CREDENTIALS を返す', async () => {
+      mockGetCredentials.mockResolvedValue(null);
+
+      const resultPromise = writer.deleteRecord('rec-1');
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('NO_CREDENTIALS');
+    });
+
+    it('deleteRecord() が DB エラー時に success: false を返す (Req 6.5)', async () => {
+      const mockEq = jest.fn().mockResolvedValue({
+        data: null,
+        error: { code: '42501', message: 'RLS エラー', status: 403 },
+      });
+      const mockDelete = jest.fn().mockReturnValue({ eq: mockEq });
+      mockFrom.mockReturnValue({ delete: mockDelete });
+
+      const resultPromise = writer.deleteRecord('rec-1');
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('DB_ERROR');
+    });
+  });
 });

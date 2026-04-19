@@ -48,8 +48,8 @@ describe('SupabaseReader', () => {
     // Supabase クライアントのチェーンメソッド
     mockEq.mockResolvedValue({
       data: [
-        { selected_text: 'テスト選択テキスト1', memo: 'メモ1' },
-        { selected_text: 'テスト選択テキスト2', memo: null },
+        { id: 'rec-1', selected_text: 'テスト選択テキスト1', memo: 'メモ1' },
+        { id: 'rec-2', selected_text: 'テスト選択テキスト2', memo: null },
       ],
       error: null,
     });
@@ -86,7 +86,7 @@ describe('SupabaseReader', () => {
       await resultPromise;
 
       expect(mockFrom).toHaveBeenCalledWith('readings');
-      expect(mockSelect).toHaveBeenCalledWith('selected_text, memo');
+      expect(mockSelect).toHaveBeenCalledWith('id, selected_text, memo');
       expect(mockEq).toHaveBeenCalledWith('page_url', mockFetchOptions.pageUrl);
     });
 
@@ -97,14 +97,14 @@ describe('SupabaseReader', () => {
 
       expect(result.success).toBe(true);
       expect(result.highlights).toEqual([
-        { text: 'テスト選択テキスト1', memo: 'メモ1' },
-        { text: 'テスト選択テキスト2', memo: undefined },
+        { id: 'rec-1', text: 'テスト選択テキスト1', memo: 'メモ1' },
+        { id: 'rec-2', text: 'テスト選択テキスト2', memo: undefined },
       ]);
     });
 
     it('memo があるレコードは memo フィールドを含めて返す (Req 5.4)', async () => {
       mockEq.mockResolvedValue({
-        data: [{ selected_text: 'テキスト', memo: 'これはメモです' }],
+        data: [{ id: 'rec-1', selected_text: 'テキスト', memo: 'これはメモです' }],
         error: null,
       });
 
@@ -113,12 +113,12 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.highlights).toEqual([{ text: 'テキスト', memo: 'これはメモです' }]);
+      expect(result.highlights).toEqual([{ id: 'rec-1', text: 'テキスト', memo: 'これはメモです' }]);
     });
 
     it('memo が NULL のレコードは memo: undefined として返す (Req 5.4)', async () => {
       mockEq.mockResolvedValue({
-        data: [{ selected_text: 'テキスト', memo: null }],
+        data: [{ id: 'rec-1', selected_text: 'テキスト', memo: null }],
         error: null,
       });
 
@@ -127,7 +127,7 @@ describe('SupabaseReader', () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
-      expect(result.highlights).toEqual([{ text: 'テキスト', memo: undefined }]);
+      expect(result.highlights).toEqual([{ id: 'rec-1', text: 'テキスト', memo: undefined }]);
       expect(result.highlights![0].memo).toBeUndefined();
     });
 
@@ -332,9 +332,9 @@ describe('SupabaseReader', () => {
     it('複数の保存済みテキストをすべて返す', async () => {
       mockEq.mockResolvedValue({
         data: [
-          { selected_text: 'テキスト1', memo: 'メモA' },
-          { selected_text: 'テキスト2', memo: null },
-          { selected_text: 'テキスト3', memo: 'メモC' },
+          { id: 'rec-1', selected_text: 'テキスト1', memo: 'メモA' },
+          { id: 'rec-2', selected_text: 'テキスト2', memo: null },
+          { id: 'rec-3', selected_text: 'テキスト3', memo: 'メモC' },
         ],
         error: null,
       });
@@ -346,18 +346,18 @@ describe('SupabaseReader', () => {
       expect(result.success).toBe(true);
       expect(result.highlights).toHaveLength(3);
       expect(result.highlights).toEqual([
-        { text: 'テキスト1', memo: 'メモA' },
-        { text: 'テキスト2', memo: undefined },
-        { text: 'テキスト3', memo: 'メモC' },
+        { id: 'rec-1', text: 'テキスト1', memo: 'メモA' },
+        { id: 'rec-2', text: 'テキスト2', memo: undefined },
+        { id: 'rec-3', text: 'テキスト3', memo: 'メモC' },
       ]);
     });
 
     it('長いテキストと短いテキストを混在して返す', async () => {
       mockEq.mockResolvedValue({
         data: [
-          { selected_text: 'a', memo: null },
-          { selected_text: 'これは長いテストテキストです。複数行の内容を含むことができます。', memo: '長いメモ' },
-          { selected_text: 'b', memo: null },
+          { id: 'rec-1', selected_text: 'a', memo: null },
+          { id: 'rec-2', selected_text: 'これは長いテストテキストです。複数行の内容を含むことができます。', memo: '長いメモ' },
+          { id: 'rec-3', selected_text: 'b', memo: null },
         ],
         error: null,
       });
@@ -379,7 +379,7 @@ describe('SupabaseReader', () => {
       const url2 = 'https://example.com/page2';
 
       mockEq.mockResolvedValue({
-        data: [{ selected_text: 'テキスト1', memo: null }],
+        data: [{ id: 'rec-1', selected_text: 'テキスト1', memo: null }],
         error: null,
       });
 
@@ -393,6 +393,35 @@ describe('SupabaseReader', () => {
 
       expect(mockEq).toHaveBeenCalledWith('page_url', url1);
       expect(mockEq).toHaveBeenCalledWith('page_url', url2);
+    });
+  });
+
+  // ─── id フィールドの取得（R6 対応）────────────────────────────────────
+
+  describe('id フィールドの取得 (Req 6.1)', () => {
+    it('fetchSavedTexts() が id カラムを含めて SELECT する (Req 6.1)', async () => {
+      const resultPromise = reader.fetchSavedTexts(mockFetchOptions);
+      jest.runAllTimersAsync();
+      await resultPromise;
+
+      expect(mockSelect).toHaveBeenCalledWith('id, selected_text, memo');
+    });
+
+    it('fetchSavedTexts() が id フィールドを含む SavedHighlight[] を返す (Req 6.1)', async () => {
+      mockEq.mockResolvedValue({
+        data: [
+          { id: 'uuid-abc', selected_text: 'テキスト', memo: 'メモ' },
+        ],
+        error: null,
+      });
+
+      const resultPromise = reader.fetchSavedTexts(mockFetchOptions);
+      jest.runAllTimersAsync();
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.highlights![0].id).toBe('uuid-abc');
+      expect(result.highlights![0].text).toBe('テキスト');
     });
   });
 });

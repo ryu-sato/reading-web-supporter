@@ -961,7 +961,7 @@ describe('Suite 5: メモ機能 E2E フロー', () => {
       // Supabase の select チェーンをモックして memo 付きデータを返す
       const mockEq = jest.fn().mockResolvedValue({
         data: [
-          { selected_text: 'ハイライトテキスト', memo: 'ハイライトメモ' },
+          { id: 'rec-1', selected_text: 'ハイライトテキスト', memo: 'ハイライトメモ' },
         ],
         error: null,
       });
@@ -984,7 +984,7 @@ describe('Suite 5: メモ機能 E2E フロー', () => {
 
       // SupabaseReader が SELECT を呼んだことを確認
       expect(mockFrom).toHaveBeenCalledWith('readings');
-      expect(mockSelect).toHaveBeenCalledWith('selected_text, memo');
+      expect(mockSelect).toHaveBeenCalledWith('id, selected_text, memo');
       expect(mockEq).toHaveBeenCalledWith('page_url', 'https://example.com/article');
 
       // レスポンスに memo 付きの highlights が含まれることを確認（Req 5.4）
@@ -1008,7 +1008,7 @@ describe('Suite 5: メモ機能 E2E フロー', () => {
       // ツールチップを表示しない（SavedHighlight.memo = undefined）
       const mockEq = jest.fn().mockResolvedValue({
         data: [
-          { selected_text: 'メモなしハイライト', memo: null },
+          { id: 'rec-1', selected_text: 'メモなしハイライト', memo: null },
         ],
         error: null,
       });
@@ -1035,6 +1035,7 @@ describe('Suite 5: メモ機能 E2E フロー', () => {
           success: true,
           highlights: [
             {
+              id: 'rec-1',
               text: 'メモなしハイライト',
               // memo プロパティは undefined（NULL → undefined 変換）なので
               // expect.objectContaining({ text: ... }) だけで確認する
@@ -1044,7 +1045,7 @@ describe('Suite 5: メモ機能 E2E フロー', () => {
       );
 
       // memo が undefined になっていることを個別確認
-      const response = sendResponse.mock.calls[0][0] as { success: boolean; highlights: Array<{ text: string; memo?: string }> };
+      const response = sendResponse.mock.calls[0][0] as { success: boolean; highlights: Array<{ id: string; text: string; memo?: string }> };
       expect(response.success).toBe(true);
       expect(response.highlights).toHaveLength(1);
       expect(response.highlights[0].text).toBe('メモなしハイライト');

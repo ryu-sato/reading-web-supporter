@@ -204,9 +204,9 @@ describe('types/types.ts - 型定義', () => {
       const response: HighlightsResponse = {
         success: true,
         highlights: [
-          { text: '保存済みテキスト1' },
-          { text: '保存済みテキスト2' },
-          { text: '保存済みテキスト3' },
+          { id: 'id-1', text: '保存済みテキスト1' },
+          { id: 'id-2', text: '保存済みテキスト2' },
+          { id: 'id-3', text: '保存済みテキスト3' },
         ],
       };
       expect(response.success).toBe(true);

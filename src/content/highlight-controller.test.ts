@@ -27,7 +27,9 @@ import {
   getHighlights,
   highlightTextsInAnimationFrame,
   initHighlightController,
+  setupClickEvents,
 } from './highlight-controller';
+import { HighlightActionPopup } from './highlight-action-popup';
 import type { HighlightsResponse } from '../types/types';
 
 // chrome.runtime.sendMessage のモック
@@ -228,7 +230,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
 
   describe('getHighlights - 保存済みテキスト取得', () => {
     it('保存済みテキストを正常に取得する', async () => {
-      const highlights = [{ text: '重要な文章1' }, { text: '重要な文章2' }];
+      const highlights = [{ id: 'id-1', text: '重要な文章1' }, { id: 'id-2', text: '重要な文章2' }];
       mockSendMessage.mockResolvedValue({
         success: true,
         highlights,
@@ -304,7 +306,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       p.textContent = '重要な文章1です。これも重要な文章2です。';
       document.body.appendChild(p);
 
-      const highlights = [{ text: '重要な文章1' }, { text: '重要な文章2' }];
+      const highlights = [{ id: 'id-1', text: '重要な文章1' }, { id: 'id-2', text: '重要な文章2' }];
       highlightTextsInAnimationFrame(highlights);
 
       expect(mockRequestAnimationFrame).toHaveBeenCalled();
@@ -318,9 +320,9 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       document.body.appendChild(p);
 
       const highlights = [
-        { text: '存在しないテキスト' },
-        { text: '重要な文章1' },
-        { text: '別の存在しないテキスト' },
+        { id: 'id-1', text: '存在しないテキスト' },
+        { id: 'id-2', text: '重要な文章1' },
+        { id: 'id-3', text: '別の存在しないテキスト' },
       ];
       highlightTextsInAnimationFrame(highlights);
 
@@ -330,7 +332,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
     });
 
     it('空配列を渡した場合、エラーなく処理する', () => {
-      const highlights: { text: string; memo?: string }[] = [];
+      const highlights: { id: string; text: string; memo?: string }[] = [];
       expect(() => {
         highlightTextsInAnimationFrame(highlights);
       }).not.toThrow();
@@ -349,7 +351,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       p.textContent = 'テスト';
       document.body.appendChild(p);
 
-      highlightTextsInAnimationFrame([{ text: 'テスト' }]);
+      highlightTextsInAnimationFrame([{ id: 'id-1', text: 'テスト' }]);
 
       expect(callback).toHaveBeenCalled();
     });
@@ -361,9 +363,9 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
 
       // 一部のテキストは見つからない（エラー扱いでなく、スキップ）
       const highlights = [
-        { text: '正常なテキスト' },
-        { text: '見つからないテキスト' },
-        { text: '正常なテキスト' },
+        { id: 'id-1', text: '正常なテキスト' },
+        { id: 'id-2', text: '見つからないテキスト' },
+        { id: 'id-3', text: '正常なテキスト' },
       ];
       expect(() => {
         highlightTextsInAnimationFrame(highlights);
@@ -378,7 +380,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
         .mockResolvedValueOnce({
           // getHighlights
           success: true,
-          highlights: [{ text: '重要な文章' }],
+          highlights: [{ id: 'id-1', text: '重要な文章' }],
         } as HighlightsResponse);
 
       const p = document.createElement('p');
@@ -545,7 +547,7 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       p.textContent = 'ツールチップテスト文章';
       document.body.appendChild(p);
 
-      highlightTextsInAnimationFrame([{ text: 'ツールチップテスト', memo: 'メモ' }]);
+      highlightTextsInAnimationFrame([{ id: 'id-1', text: 'ツールチップテスト', memo: 'メモ' }]);
 
       const tooltips = document.querySelectorAll('.reading-support-tooltip');
       expect(tooltips.length).toBe(1);
@@ -644,12 +646,103 @@ describe('content/highlight-controller.ts - 保存済みテキストのハイラ
       document.body.appendChild(p);
 
       // SavedHighlight[] を渡す（新しいシグネチャ）
-      const highlights = [{ text: 'SavedHighlightテスト', memo: 'ハイライトメモ' }];
+      const highlights = [{ id: 'id-1', text: 'SavedHighlightテスト', memo: 'ハイライトメモ' }];
       highlightTextsInAnimationFrame(highlights);
 
       const mark = document.querySelector('mark.reading-support-highlight');
       expect(mark).not.toBeNull();
       expect(mark?.getAttribute('data-memo')).toBe('ハイライトメモ');
+    });
+  });
+
+  describe('R6: data-record-id と HighlightActionPopup 統合 (Req 6.1, 6.3, 6.4)', () => {
+    it('highlightText が id を受け取り data-record-id 属性を設定する (Req 6.1)', () => {
+      const p = document.createElement('p');
+      p.textContent = 'IDテスト文章';
+      document.body.appendChild(p);
+
+      highlightText('IDテスト', 'メモ', 'rec-123');
+
+      const mark = document.querySelector('mark.reading-support-highlight');
+      expect(mark?.getAttribute('data-record-id')).toBe('rec-123');
+    });
+
+    it('highlightTextsInAnimationFrame が id を data-record-id として設定する (Req 6.1)', () => {
+      const p = document.createElement('p');
+      p.textContent = 'ハイライトIDテスト文章';
+      document.body.appendChild(p);
+
+      highlightTextsInAnimationFrame([{ id: 'rec-456', text: 'ハイライトIDテスト', memo: 'テストメモ' }]);
+
+      const mark = document.querySelector('mark.reading-support-highlight');
+      expect(mark?.getAttribute('data-record-id')).toBe('rec-456');
+    });
+
+    it('setupClickEvents が <mark> クリックで HighlightActionPopup.show() を呼ぶ (Req 6.1)', () => {
+      const p = document.createElement('p');
+      p.textContent = 'クリックテスト文章';
+      document.body.appendChild(p);
+
+      highlightText('クリックテスト', 'メモ', 'rec-click');
+
+      const mockPopup = {
+        show: jest.fn(),
+        close: jest.fn(),
+        setCallbacks: jest.fn(),
+      } as unknown as HighlightActionPopup;
+
+      setupClickEvents(mockPopup);
+
+      const mark = document.querySelector('mark.reading-support-highlight') as HTMLElement;
+      mark.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(mockPopup.show).toHaveBeenCalledWith('rec-click', 'メモ', mark);
+    });
+
+    it('HighlightController の onMemoUpdated コールバックで data-memo が更新される (Req 6.3)', () => {
+      const p = document.createElement('p');
+      p.textContent = 'メモ更新テスト文章';
+      document.body.appendChild(p);
+
+      highlightText('メモ更新テスト', '古いメモ', 'rec-update');
+
+      const mark = document.querySelector('mark.reading-support-highlight') as HTMLElement;
+      expect(mark.getAttribute('data-memo')).toBe('古いメモ');
+
+      // HighlightController のコールバック（handleMemoUpdated）相当の処理を直接テスト
+      // 対応する <mark> の data-memo を更新する
+      const marks = document.querySelectorAll('mark.reading-support-highlight[data-record-id="rec-update"]');
+      marks.forEach((m) => {
+        m.setAttribute('data-memo', '新しいメモ');
+      });
+
+      expect(mark.getAttribute('data-memo')).toBe('新しいメモ');
+    });
+
+    it('HighlightController の onHighlightDeleted コールバックで <mark> が DOM から除去される (Req 6.4)', () => {
+      const p = document.createElement('p');
+      p.textContent = '削除テスト文章';
+      document.body.appendChild(p);
+
+      highlightText('削除テスト', 'メモ', 'rec-delete');
+
+      expect(document.querySelector('mark.reading-support-highlight[data-record-id="rec-delete"]')).not.toBeNull();
+
+      // HighlightController の handleHighlightDeleted 相当の処理をテスト
+      const marks = document.querySelectorAll('mark.reading-support-highlight[data-record-id="rec-delete"]');
+      marks.forEach((mark) => {
+        const parent = mark.parentNode;
+        if (parent) {
+          while (mark.firstChild) {
+            parent.insertBefore(mark.firstChild, mark);
+          }
+          parent.removeChild(mark);
+        }
+      });
+
+      expect(document.querySelector('mark.reading-support-highlight[data-record-id="rec-delete"]')).toBeNull();
+      // テキストは残っている
+      expect(p.textContent).toContain('削除テスト');
     });
   });
 

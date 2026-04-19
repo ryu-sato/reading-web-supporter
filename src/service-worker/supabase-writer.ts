@@ -4,7 +4,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SaveTextOptions, SaveResult, SupabaseWriterService } from '../types/types';
+import { SaveTextOptions, SaveResult, SupabaseWriterService, UpdateResult, DeleteResult } from '../types/types';
 import { SettingsManager } from './settings-manager';
 
 /** リトライ設定 */
@@ -42,7 +42,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 /**
- * Supabase エラーオブジェクトを SaveResult のエラーコードに分類する
+ * Supabase エラーオブジェクトを SaveResult / UpdateResult / DeleteResult のエラーコードに分類する
  */
 function classifySupabaseError(error: {
   code?: string;
@@ -181,6 +181,146 @@ export class SupabaseWriter implements SupabaseWriterService {
     }
 
     // 最大リトライ回数を超えた場合
+    return {
+      success: false,
+      error: {
+        code: 'NETWORK_ERROR',
+        message: `ネットワークエラー: ${MAX_RETRY_COUNT}回の試行後も接続できませんでした。${lastNetworkError?.message ?? ''}`,
+        recoveryHint: 'インターネット接続を確認して、しばらく後に再試行してください。',
+      },
+    };
+  }
+
+  /**
+   * 指定 ID のレコードの memo カラムを UPDATE する
+   * Requirement 6.3: メモ編集を Supabase へ反映する
+   * Requirement 6.5: 更新失敗時は UpdateResult の success: false とエラーコードを返す
+   */
+  async updateMemo(id: string, memo: string): Promise<UpdateResult> {
+    const credentials = await this.settingsManager.getCredentials();
+
+    if (credentials === null) {
+      return {
+        success: false,
+        error: {
+          code: 'NO_CREDENTIALS',
+          message: 'Supabase認証情報が設定されていません。',
+          recoveryHint: '設定画面（Options Page）でProject URLとAnon Keyを入力してください。',
+        },
+      };
+    }
+
+    const supabase = this.createSupabaseClient(credentials.projectUrl, credentials.anonKey);
+
+    let lastNetworkError: Error | null = null;
+
+    for (let attempt = 0; attempt < MAX_RETRY_COUNT; attempt++) {
+      if (attempt > 0) {
+        const delayMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        await sleep(delayMs);
+      }
+
+      try {
+        type UpdateResultType = { data: unknown; error: { code?: string; message?: string; status?: number } | null };
+        const { error } = await withTimeout(
+          supabase.from('readings').update({ memo }).eq('id', id) as unknown as Promise<UpdateResultType>,
+          TIMEOUT_MS
+        );
+
+        if (error) {
+          return {
+            success: false,
+            error: classifySupabaseError(error),
+          };
+        }
+
+        return { success: true };
+      } catch (err) {
+        lastNetworkError = err instanceof Error ? err : new Error(String(err));
+
+        if (lastNetworkError.message === 'TIMEOUT') {
+          return {
+            success: false,
+            error: {
+              code: 'NETWORK_ERROR',
+              message: `タイムアウト: ${TIMEOUT_MS / 1000}秒以内に応答がありませんでした。`,
+              recoveryHint: 'ネットワーク接続を確認して再試行してください。',
+            },
+          };
+        }
+      }
+    }
+
+    return {
+      success: false,
+      error: {
+        code: 'NETWORK_ERROR',
+        message: `ネットワークエラー: ${MAX_RETRY_COUNT}回の試行後も接続できませんでした。${lastNetworkError?.message ?? ''}`,
+        recoveryHint: 'インターネット接続を確認して、しばらく後に再試行してください。',
+      },
+    };
+  }
+
+  /**
+   * 指定 ID のレコードを DELETE する
+   * Requirement 6.4: ハイライトを Supabase から削除する
+   * Requirement 6.5: 削除失敗時は DeleteResult の success: false とエラーコードを返す
+   */
+  async deleteRecord(id: string): Promise<DeleteResult> {
+    const credentials = await this.settingsManager.getCredentials();
+
+    if (credentials === null) {
+      return {
+        success: false,
+        error: {
+          code: 'NO_CREDENTIALS',
+          message: 'Supabase認証情報が設定されていません。',
+          recoveryHint: '設定画面（Options Page）でProject URLとAnon Keyを入力してください。',
+        },
+      };
+    }
+
+    const supabase = this.createSupabaseClient(credentials.projectUrl, credentials.anonKey);
+
+    let lastNetworkError: Error | null = null;
+
+    for (let attempt = 0; attempt < MAX_RETRY_COUNT; attempt++) {
+      if (attempt > 0) {
+        const delayMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        await sleep(delayMs);
+      }
+
+      try {
+        type DeleteResultType = { data: unknown; error: { code?: string; message?: string; status?: number } | null };
+        const { error } = await withTimeout(
+          supabase.from('readings').delete().eq('id', id) as unknown as Promise<DeleteResultType>,
+          TIMEOUT_MS
+        );
+
+        if (error) {
+          return {
+            success: false,
+            error: classifySupabaseError(error),
+          };
+        }
+
+        return { success: true };
+      } catch (err) {
+        lastNetworkError = err instanceof Error ? err : new Error(String(err));
+
+        if (lastNetworkError.message === 'TIMEOUT') {
+          return {
+            success: false,
+            error: {
+              code: 'NETWORK_ERROR',
+              message: `タイムアウト: ${TIMEOUT_MS / 1000}秒以内に応答がありませんでした。`,
+              recoveryHint: 'ネットワーク接続を確認して再試行してください。',
+            },
+          };
+        }
+      }
+    }
+
     return {
       success: false,
       error: {

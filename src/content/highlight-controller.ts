@@ -6,6 +6,7 @@
  */
 
 import type { GetHighlightsMessage, HighlightsResponse } from '../types/types';
+import { HighlightActionPopup } from './highlight-action-popup';
 
 /** Chrome Extension Runtime API の型定義（テスト環境でのグローバルモックに対応） */
 interface ChromeRuntime {
@@ -133,12 +134,14 @@ function setupTooltipEvents(): void {
  * Requirement 4.2, 4.3: TreeWalker でテキストノードを走査し、<mark> でラップ
  * Requirement 4.4: 見つからないテキストはスキップして継続
  * Requirement 5.4: memo が存在する場合は data-memo 属性を設定する
+ * Requirement 6.1: id が存在する場合は data-record-id 属性を設定する
  *
  * @param text - ハイライト対象のテキスト
  * @param memo - オプションのメモ（設定された場合 data-memo 属性として保存）
+ * @param id - オプションのレコード識別子（設定された場合 data-record-id 属性として保存）
  * @returns ハイライトが適用されたかどうか
  */
-function highlightText(text: string, memo?: string): boolean {
+function highlightText(text: string, memo?: string, id?: string): boolean {
   if (!text || !document.body) return false;
 
   // テキストノードを収集（script/style/ハイライト済みを除外）
@@ -210,6 +213,11 @@ function highlightText(text: string, memo?: string): boolean {
         // memo が空でない場合のみ data-memo 属性を設定（要件 5.4, 5.5）
         if (memo && memo.length > 0) {
           mark.setAttribute('data-memo', memo);
+        }
+
+        // id が存在する場合は data-record-id 属性を設定（要件 6.1）
+        if (id) {
+          mark.setAttribute('data-record-id', id);
         }
 
         // 複数ノードをまたがる場合は surroundContents が失敗するため extractContents を使用
@@ -299,28 +307,63 @@ async function getHighlights(pageUrl: string): Promise<HighlightsResponse> {
  * Requirement 4.3: 複数テキストをすべてハイライト表示
  * Requirement 4.4: 見つからないテキストはスキップして継続
  * Requirement 5.4: SavedHighlight[] を受け取り memo を処理する
+ * Requirement 6.1: SavedHighlight[] を受け取り id を data-record-id として設定する
  * Requirement 3.6（実装ノート）: メインスレッドをブロックしないようにする
  *
  * @param highlights - ハイライト対象の SavedHighlight 配列
+ * @param popup - HighlightActionPopup インスタンス（クリックハンドラに使用）
  */
-function highlightTextsInAnimationFrame(highlights: SavedHighlight[]): void {
+function highlightTextsInAnimationFrame(highlights: SavedHighlight[], popup?: HighlightActionPopup): void {
   requestAnimationFrame(() => {
     for (const highlight of highlights) {
       try {
-        highlightText(highlight.text, highlight.memo);
+        highlightText(highlight.text, highlight.memo, highlight.id);
       } catch (_e) {
         // 個別テキストのハイライト失敗は無視して続行
       }
     }
     setupTooltipEvents();
+
+    // HighlightActionPopup が提供されている場合はクリックイベントを設定する（Requirement 6.1）
+    if (popup) {
+      setupClickEvents(popup);
+    }
+  });
+}
+
+/**
+ * ドキュメントレベルのイベント委譲で <mark> 要素のクリックを検知して HighlightActionPopup を開く
+ * Requirement 6.1: ハイライト要素クリックで HighlightActionPopup を開く
+ *
+ * @param popup - HighlightActionPopup インスタンス
+ */
+function setupClickEvents(popup: HighlightActionPopup): void {
+  // 既存リスナーの重複登録を避けるため、data 属性で管理
+  if (document.body.dataset.clickEventsSetup === 'true') {
+    return;
+  }
+  document.body.dataset.clickEventsSetup = 'true';
+
+  document.addEventListener('click', (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    const mark = target.closest?.('mark.reading-support-highlight') as HTMLElement | null;
+    if (mark) {
+      const id = mark.getAttribute('data-record-id');
+      const memo = mark.getAttribute('data-memo') ?? '';
+      if (id) {
+        popup.show(id, memo, mark);
+      }
+    }
   });
 }
 
 /**
  * DOMContentLoaded 後に起動して、保存済みテキストを取得しハイライト表示する
  * Requirement 4.1, 4.2, 4.3, 4.4, 4.5, 4.6
+ *
+ * @param popup - HighlightActionPopup インスタンス（クリック処理に使用）
  */
-async function initHighlightController(): Promise<void> {
+async function initHighlightController(popup?: HighlightActionPopup): Promise<void> {
   // 認証情報確認
   const isConfigured = await checkIfConfigured();
   if (!isConfigured) {
@@ -343,11 +386,12 @@ async function initHighlightController(): Promise<void> {
 
   // 取得した各ハイライト（テキストとメモ）を使ってハイライト表示
   // Requirement 5.4: SavedHighlight[] を直接 highlightTextsInAnimationFrame に渡す
+  // Requirement 6.1: id を data-record-id として設定し、クリックイベントを設定する
   const highlights = response.highlights || [];
   console.log('[ReadingSupport] 取得したハイライト数:', highlights.length, highlights);
   if (highlights.length > 0) {
     console.log('[ReadingSupport] ハイライト対象:', JSON.stringify(highlights));
-    highlightTextsInAnimationFrame(highlights);
+    highlightTextsInAnimationFrame(highlights, popup);
   }
 }
 
@@ -355,15 +399,29 @@ async function initHighlightController(): Promise<void> {
  * HighlightController クラス
  * Requirement 4.1: ページロード時に保存済みテキストを取得しハイライト表示する
  * Requirement 4.6: 認証情報未設定時は処理を中断する
+ * Requirement 6.1: HighlightActionPopup を制御する
  */
 export class HighlightController {
   private isInitialized = false;
+  private popup: HighlightActionPopup;
 
   /**
    * コンストラクタで DOMContentLoaded リスナーを登録する
    * Requirement 4.1: DOMContentLoaded イベント後に起動
+   * Requirement 6.1: HighlightActionPopup を生成し、コールバックを設定する
+   *
+   * @param popup - 外部から注入する HighlightActionPopup（省略時は自動生成）
    */
-  constructor() {
+  constructor(popup?: HighlightActionPopup) {
+    this.popup = popup ?? new HighlightActionPopup();
+
+    // コールバック設定：メモ更新後に data-memo を即時反映（Requirement 6.3）
+    // 削除後に <mark> 要素を DOM から除去（Requirement 6.4）
+    this.popup.setCallbacks(
+      (id: string, newMemo: string) => this.handleMemoUpdated(id, newMemo),
+      (id: string) => this.handleHighlightDeleted(id)
+    );
+
     if (typeof document === 'undefined') {
       return;
     }
@@ -380,6 +438,39 @@ export class HighlightController {
   }
 
   /**
+   * メモ更新コールバック
+   * Requirement 6.3: 対応する <mark> 要素の data-memo 属性を即時更新する
+   */
+  private handleMemoUpdated(id: string, newMemo: string): void {
+    const marks = document.querySelectorAll(`mark.reading-support-highlight[data-record-id="${id}"]`);
+    marks.forEach((mark) => {
+      if (newMemo && newMemo.length > 0) {
+        mark.setAttribute('data-memo', newMemo);
+      } else {
+        mark.removeAttribute('data-memo');
+      }
+    });
+  }
+
+  /**
+   * ハイライト削除コールバック
+   * Requirement 6.4: 対応する <mark> 要素を DOM から除去する
+   */
+  private handleHighlightDeleted(id: string): void {
+    const marks = document.querySelectorAll(`mark.reading-support-highlight[data-record-id="${id}"]`);
+    marks.forEach((mark) => {
+      const parent = mark.parentNode;
+      if (parent) {
+        // <mark> の子ノードを親の同位置に移動してから <mark> を除去
+        while (mark.firstChild) {
+          parent.insertBefore(mark.firstChild, mark);
+        }
+        parent.removeChild(mark);
+      }
+    });
+  }
+
+  /**
    * 初期化処理を実行
    */
   private async init(): Promise<void> {
@@ -389,7 +480,7 @@ export class HighlightController {
     this.isInitialized = true;
 
     try {
-      await initHighlightController();
+      await initHighlightController(this.popup);
     } catch (_e) {
       // 予期しないエラーはサイレント中断
     }
@@ -406,4 +497,5 @@ export {
   getHighlights,
   highlightTextsInAnimationFrame,
   initHighlightController,
+  setupClickEvents,
 };

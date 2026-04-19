@@ -1,0 +1,45 @@
+# 依存関係
+node_modules/
+.pnp
+.pnp.js
+
+# ビルド成果物
+dist/
+build/
+out/
+.next/
+.nuxt/
+.output/
+
+# キャッシュ
+.cache/
+.turbo/
+.parcel-cache/
+
+# バージョン管理
+.git/
+
+# ログ・デバッグ出力
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# 大きなデータファイル
+*.csv
+*.json.gz
+*.sqlite
+*.db
+data/raw/
+data/large/
+
+# テストのカバレッジレポート
+coverage/
+.nyc_output/
+
+# IDEの設定（通常は不要）
+.vscode/
+.idea/
+
+# 環境変数（セキュリティ上も重要）
+.env.local
+.env.production

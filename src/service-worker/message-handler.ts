@@ -14,7 +14,7 @@
  * - testConnection: SupabaseWriter.testConnection() に委譲（Options Page からのリクエスト）
  */
 
-import type { ExtensionMessage, TextSelectionMessage, SupabaseCredentials, SaveTextOptions, SaveResult, HighlightsResponse } from '../types/types';
+import type { ExtensionMessage, TextSelectionMessage, SupabaseCredentials, SaveTextOptions, SaveResult, HighlightsResponse, UpdateResult, DeleteResult } from '../types/types';
 import { SettingsManager } from './settings-manager';
 import { SupabaseWriter } from './supabase-writer';
 import { SupabaseReader } from './supabase-reader';
@@ -45,6 +45,8 @@ interface ISettingsManager {
 interface ISupabaseWriter {
   save(options: SaveTextOptions): Promise<SaveResult>;
   testConnection(): Promise<{ success: boolean; message: string }>;
+  updateMemo(id: string, memo: string): Promise<UpdateResult>;
+  deleteRecord(id: string): Promise<DeleteResult>;
 }
 
 /** SupabaseReader の最小インターフェース（テスト用にインジェクション可能） */
@@ -140,6 +142,12 @@ export class MessageHandler {
 
       case 'isConfigured':
         return this.handleIsConfigured(sendResponse);
+
+      case 'updateMemo':
+        return this.handleUpdateMemo(message.payload.id, message.payload.memo, sendResponse);
+
+      case 'deleteHighlight':
+        return this.handleDeleteHighlight(message.payload.id, sendResponse);
 
       default:
         // 未知のメッセージタイプは無視（他ハンドラーへ委譲）
@@ -284,6 +292,43 @@ export class MessageHandler {
   private handleIsConfigured(sendResponse: (response?: unknown) => void): true {
     this.settingsManager.isConfigured().then((configured: boolean) => {
       sendResponse({ configured });
+    });
+    return true;
+  }
+
+  /**
+   * updateMemo メッセージの処理
+   * HighlightActionPopup から送信されたメモ更新リクエストを SupabaseWriter に委譲する
+   *
+   * Requirement 6.3: メモ編集を Supabase へ反映する
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleUpdateMemo(
+    id: string,
+    memo: string,
+    sendResponse: (response?: unknown) => void
+  ): true {
+    this.supabaseWriter.updateMemo(id, memo).then((result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  /**
+   * deleteHighlight メッセージの処理
+   * HighlightActionPopup から送信された削除リクエストを SupabaseWriter に委譲する
+   *
+   * Requirement 6.4: ハイライトを Supabase から削除する
+   *
+   * @returns true — 非同期レスポンスチャネルを維持するため
+   */
+  private handleDeleteHighlight(
+    id: string,
+    sendResponse: (response?: unknown) => void
+  ): true {
+    this.supabaseWriter.deleteRecord(id).then((result) => {
+      sendResponse(result);
     });
     return true;
   }
